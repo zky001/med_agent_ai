@@ -1166,20 +1166,6 @@ function switchGenerationStep(stepNumber) {
     }
 }
 
-function formatFieldName(fieldName) {
-    const nameMap = {
-        study_type: '研究类型',
-        drug_type: '药物类型',
-        indication: '适应症',
-        patient_population: '患者人群',
-        primary_endpoint: '主要终点',
-        study_phase: '研究阶段',
-        estimated_enrollment: '预计入组'
-    };
-    return nameMap[fieldName] || fieldName;
-}
-
-
 async function loadKnowledgeStats() {
     try {
         const response = await fetch(`${API_BASE_URL}/knowledge/stats`);
@@ -1479,6 +1465,17 @@ function formatFieldName(fieldName) {
         primary_endpoint: '主要终点',
         study_phase: '研究阶段',
         estimated_enrollment: '预计入组'
+    };
+    return nameMap[fieldName] || fieldName;
+}
+
+// 渲染协议大纲编辑器
+function fillOutlineEditor(outline) {
+    const editor = document.getElementById('outline-editor');
+    if (!editor) return;
+
+    editor.innerHTML = `
+        <div class="outline-list">
             ${outline.map((section, index) => createOutlineItemHTML(section, index)).join('')}
         </div>
         <div class="outline-actions-bottom">
