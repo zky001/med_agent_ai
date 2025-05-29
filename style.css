@@ -1835,11 +1835,32 @@ body {
     overflow: hidden;
 }
 
+.prompt-viewer {
+    background: var(--light-color);
+    border-bottom: 1px solid var(--border-color);
+    padding: var(--spacing-md);
+    font-family: monospace;
+    white-space: pre-wrap;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
 .content-viewer {
     padding: var(--spacing-lg);
     max-height: 600px;
     overflow-y: auto;
     line-height: 1.6;
+}
+
+.prompt-viewer {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    padding: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-size: 0.9rem;
 }
 
 .content-viewer h1,
