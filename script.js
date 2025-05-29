@@ -893,23 +893,24 @@ window.viewFileDetails = async function(filename) {
 window.sendMessage = async function() {
     const chatInput = document.getElementById('chat-input');
     const message = chatInput?.value?.trim();
-    
+
     if (!message) {
         showToast('请输入消息', 'warning');
         return;
     }
-    
+
     // 添加用户消息到聊天区域
     addChatMessage('user', message);
-    
+
     // 清空输入框
     chatInput.value = '';
-    
-    // 显示正在输入状态
-    const typingIndicator = addChatMessage('assistant', '正在思考中...', true);
-    
+
+    // 创建助手消息容器
+    const assistantMsg = addChatMessage('assistant', '');
+    const textEl = assistantMsg.querySelector('.message-text');
+
     try {
-        const response = await fetch(`${API_BASE_URL}/chat`, {
+        const response = await fetch(`${API_BASE_URL}/chat_stream`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -919,28 +920,49 @@ window.sendMessage = async function() {
                 temperature: parseFloat(document.getElementById('chat-temp')?.value || '0.3')
             })
         });
-        
-        const result = await response.json();
-        
-        // 移除正在输入指示器
-        if (typingIndicator && typingIndicator.parentNode) {
-            typingIndicator.parentNode.removeChild(typingIndicator);
+
+        if (!response.ok || !response.body) {
+            throw new Error(`API调用失败: ${response.status}`);
         }
-        
-        if (result.success) {
-            addChatMessage('assistant', result.response);
-            updateChatStats();
-        } else {
-            addChatMessage('assistant', '抱歉，我遇到了一些问题：' + result.message);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = '';
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+
+                        if (data.error) {
+                            throw new Error(data.error);
+                        }
+
+                        if (data.content) {
+                            accumulated += data.content;
+                            textEl.innerHTML = escapeHtml(accumulated).replace(/\n/g, '<br>');
+                        }
+
+                        if (data.done) {
+                            updateChatStats();
+                            return;
+                        }
+                    } catch (err) {
+                        console.warn('解析流数据失败:', err);
+                    }
+                }
+            }
         }
-        
+
     } catch (error) {
-        // 移除正在输入指示器
-        if (typingIndicator && typingIndicator.parentNode) {
-            typingIndicator.parentNode.removeChild(typingIndicator);
-        }
-        
-        addChatMessage('assistant', '抱歉，网络连接出现问题：' + error.message);
+        textEl.textContent = '抱歉，网络连接出现问题：' + error.message;
     }
 };
 
