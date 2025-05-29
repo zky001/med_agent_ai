@@ -2349,13 +2349,13 @@ window.extractKeyInfo = async function() {
         }
 
         showToast('✅ AI成功提取了关键信息！', 'success');
-        
+
     } catch (error) {
         console.error('❌ 提取关键信息失败:', error);
-        
+
         // 根据错误类型显示不同的错误信息
         let errorMessage = '提取关键信息失败: ';
-        
+
         if (error.message.includes('Failed to fetch')) {
             errorMessage += '无法连接到后端服务，请检查API服务是否运行在 http://localhost:8000';
         } else if (error.message.includes('500')) {
@@ -2363,11 +2363,10 @@ window.extractKeyInfo = async function() {
         } else if (error.message.includes('404')) {
             errorMessage += 'API端点未找到，请检查后端服务版本';
         } else {
-            showToast('信息提取失败', 'error');
+            errorMessage += error.message;
         }
-    } catch (error) {
-        console.error('❌ 提取关键信息失败:', error);
-        showToast('提取关键信息失败: ' + error.message, 'error');
+
+        showToast(errorMessage, 'error');
     }
 };
 
