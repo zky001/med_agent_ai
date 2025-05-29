@@ -1446,7 +1446,8 @@ async def extract_key_info(request: KeyInfoExtractionRequest):
             "success": True,
             "extracted_info": extracted_info,
             "original_response": response,
-            "extraction_quality": validate_extraction_quality(extracted_info)
+            "extraction_quality": validate_extraction_quality(extracted_info),
+            "prompt": extraction_prompt
         }
         
     except Exception as e:
@@ -1584,7 +1585,8 @@ async def generate_outline(request: OutlineGenerationRequest):
         return {
             "success": True,
             "outline": outline,
-            "original_response": response
+            "original_response": response,
+            "prompt": outline_prompt
         }
         
     except Exception as e:
@@ -1971,6 +1973,7 @@ async def generate_section_stream(request: SectionStreamRequest):
                 yield f"data: {json.dumps({'content': token, 'done': False})}\n\n"
                 await asyncio.sleep(0.02)
             yield f"data: {json.dumps({'content': '\n', 'done': True})}\n\n"
+
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
 
