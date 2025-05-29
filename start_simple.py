@@ -137,8 +137,8 @@ class ChatRequest(BaseModel):
 current_config = {
     "llm": {
         "type": "local",
-        "url": "http://192.168.22.191:8000/v1",
-        "model": "/home/aiteam/.cache/modelscope/hub/models/google/medgemma-27b-text-it/",
+        "url": "https://v1.voct.top/v1",
+        "model": "gpt-4.1-mini",
         "key": "EMPTY",
         "temperature": 0.3
     },
@@ -299,6 +299,55 @@ def call_local_llm(message: str, temperature: float = 0.3) -> str:
         logger.error(f"LLM调用失败: {e}")
         return f"抱歉，LLM调用失败: {str(e)}"
 
+def call_local_llm_stream(message: str, system_prompt: str = None, temperature: float = 0.3):
+    """流式调用本地LLM模型"""
+    headers = {
+        "Authorization": f"Bearer {current_config['llm']['key']}",
+        "Content-Type": "application/json"
+    }
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": message})
+
+    data = {
+        "model": current_config["llm"]["model"],
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": 2000,
+        "stream": True
+    }
+
+    try:
+        with requests.post(
+            f"{current_config['llm']['url']}/chat/completions",
+            headers=headers,
+            json=data,
+            stream=True,
+            timeout=60
+        ) as r:
+            if r.status_code != 200:
+                raise ValueError(f"API调用失败: {r.status_code} - {r.text}")
+
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                if line.startswith(b'data:'):
+                    payload = line[5:].strip()
+                    if payload == b"[DONE]":
+                        break
+                    try:
+                        event = json.loads(payload.decode())
+                        delta = event.get("choices", [{}])[0].get("delta", {}).get("content")
+                        if delta:
+                            yield delta
+                    except json.JSONDecodeError:
+                        continue
+    except Exception as e:
+        logger.error(f"LLM流式调用失败: {e}")
+        raise
+
 @app.get("/")
 async def root():
     """根路径，返回API信息"""
@@ -375,16 +424,11 @@ async def chat_with_llm(request: ChatRequest):
 async def chat_with_llm_stream(request: ChatRequest):
     """与LLM对话，流式返回"""
     from fastapi.responses import StreamingResponse
-    import asyncio
 
     async def generate_chat():
         try:
-            response_text = call_local_llm(request.message, request.temperature)
-
-            for chunk in chunk_text(response_text, chunk_size=50, overlap=0):
-                yield f"data: {json.dumps({'content': chunk})}\n\n"
-                await asyncio.sleep(0.02)
-
+            for token in call_local_llm_stream(request.message, temperature=request.temperature):
+                yield f"data: {json.dumps({'content': token})}\n\n"
             yield "data: {\"done\": true}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
@@ -473,8 +517,8 @@ async def test_embedding_model():
 @app.post("/config/update")
 async def update_configuration(
     llm_type: str = Form("local"),
-    llm_url: str = Form("http://192.168.22.191:8000/v1"),
-    llm_model: str = Form("/home/aiteam/.cache/modelscope/hub/models/google/medgemma-27b-text-it/"),
+    llm_url: str = Form("https://v1.voct.top/v1"),
+    llm_model: str = Form("gpt-4.1-mini"),
     llm_key: str = Form(""),
     llm_temperature: float = Form(0.3),
     embed_type: str = Form("sentence-transformers"),
@@ -1827,19 +1871,13 @@ async def generate_protocol_stream(request: ProtocolStreamRequest):
                 )
                 
                 # 调用LLM生成该模块内容
-                module_content = call_local_llm(module_prompt, temperature=0.3)
-                
-                # 流式输出
-                chunk_data = {
-                    "content": f"\n## {section['title']}\n\n{module_content}\n",
-                    "progress": (idx + 1) / total_sections,
-                    "current_module": section['title'],
-                    "done": False
-                }
-                yield f"data: {json.dumps(chunk_data)}\n\n"
-                
-                full_content += chunk_data["content"]
-                await asyncio.sleep(0.1)  # 给前端时间渲染
+                section_header = f"\n## {section['title']}\n\n"
+                yield f"data: {json.dumps({'content': section_header, 'progress': (idx + 1)/total_sections, 'done': False})}\n\n"
+                section_content = ""
+                for token in call_local_llm_stream(module_prompt, temperature=0.3):
+                    section_content += token
+                    yield f"data: {json.dumps({'content': token, 'progress': (idx + 1)/total_sections, 'done': False})}\n\n"
+                full_content += section_header + section_content + "\n"
             
             # 3. 质量检查（如果启用）
             if request.settings.get('include_quality_check', True):
@@ -1917,12 +1955,11 @@ async def generate_section_stream(request: SectionStreamRequest):
             else:
                 prompt = generate_protocol_with_knowledge_enhancement(request.section['title'], request.confirmed_info, knowledge_results[:3])
 
-            content = call_local_llm(prompt, temperature=request.settings.get('detail_level', 0.3))
-            data = {
-                "content": f"\n## {request.section['title']}\n\n{content}\n",
-                "done": True
-            }
-            yield f"data: {json.dumps(data)}\n\n"
+            header = f"\n## {request.section['title']}\n\n"
+            yield f"data: {json.dumps({'content': header, 'done': False})}\n\n"
+            for token in call_local_llm_stream(prompt, temperature=request.settings.get('detail_level', 0.3)):
+                yield f"data: {json.dumps({'content': token, 'done': False})}\n\n"
+            yield f"data: {json.dumps({'content': '', 'done': True})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
 
