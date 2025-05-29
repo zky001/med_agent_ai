@@ -893,23 +893,24 @@ window.viewFileDetails = async function(filename) {
 window.sendMessage = async function() {
     const chatInput = document.getElementById('chat-input');
     const message = chatInput?.value?.trim();
-    
+
     if (!message) {
         showToast('请输入消息', 'warning');
         return;
     }
-    
+
     // 添加用户消息到聊天区域
     addChatMessage('user', message);
-    
+
     // 清空输入框
     chatInput.value = '';
-    
-    // 显示正在输入状态
-    const typingIndicator = addChatMessage('assistant', '正在思考中...', true);
-    
+
+    // 创建临时回复框
+    const typingIndicator = addChatMessage('assistant', '', true);
+    const textContainer = typingIndicator?.querySelector('.message-text');
+
     try {
-        const response = await fetch(`${API_BASE_URL}/chat`, {
+        const response = await fetch(`${API_BASE_URL}/chat_stream`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -919,28 +920,51 @@ window.sendMessage = async function() {
                 temperature: parseFloat(document.getElementById('chat-temp')?.value || '0.3')
             })
         });
-        
-        const result = await response.json();
-        
-        // 移除正在输入指示器
-        if (typingIndicator && typingIndicator.parentNode) {
-            typingIndicator.parentNode.removeChild(typingIndicator);
+
+        if (!response.ok) {
+            throw new Error('网络错误，状态码: ' + response.status);
         }
-        
-        if (result.success) {
-            addChatMessage('assistant', result.response);
-            updateChatStats();
-        } else {
-            addChatMessage('assistant', '抱歉，我遇到了一些问题：' + result.message);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let assistantText = '';
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+
+                        if (data.error) {
+                            throw new Error(data.error);
+                        }
+
+                        if (data.content) {
+                            assistantText += data.content;
+                            if (textContainer) textContainer.textContent = assistantText;
+                        }
+
+                        if (data.done) {
+                            typingIndicator.classList.remove('temporary');
+                            updateChatStats();
+                        }
+                    } catch (e) {
+                        console.warn('解析流数据失败', e);
+                    }
+                }
+            }
         }
-        
+
     } catch (error) {
-        // 移除正在输入指示器
-        if (typingIndicator && typingIndicator.parentNode) {
-            typingIndicator.parentNode.removeChild(typingIndicator);
+        if (textContainer) {
+            textContainer.textContent = '抱歉，发生错误：' + error.message;
         }
-        
-        addChatMessage('assistant', '抱歉，网络连接出现问题：' + error.message);
     }
 };
 
@@ -1144,14 +1168,39 @@ function switchGenerationStep(stepNumber) {
 
 function fillExtractedInfo(info) {
     const container = document.getElementById('extracted-info-grid');
-    if (!container) return;
-    
-    container.innerHTML = Object.entries(info).map(([key, value]) => `
+    const extraContainer = document.getElementById('additional-info-container');
+    const extraInput = document.getElementById('additional-info');
+    if (!container || !extraInput || !extraContainer) return;
+
+    // 拆分前三项与其余信息
+    const entries = Object.entries(info).filter(([k]) => k !== 'speculated' && k !== '_speculated');
+    const mainEntries = entries.slice(0, 3);
+    const extraEntries = entries.slice(3);
+
+    // 渲染前三项
+    container.innerHTML = mainEntries.map(([key, value]) => `
         <div class="info-item">
             <label>${formatFieldName(key)}:</label>
             <input type="text" value="${escapeHtml(value)}" data-field="${key}">
         </div>
     `).join('');
+
+    // 处理附加信息
+    if (extraEntries.length) {
+        extraContainer.style.display = 'block';
+        extraInput.value = extraEntries.map(([k, v]) => `${formatFieldName(k)}: ${v}`).join('\n');
+    } else {
+        extraContainer.style.display = 'none';
+        extraInput.value = '';
+    }
+
+    // 根据推测标记显示颜色
+    const speculated = info.speculated || info._speculated;
+    if (speculated) {
+        extraInput.classList.add('speculated');
+    } else {
+        extraInput.classList.remove('speculated');
+    }
 }
 
 function formatFieldName(fieldName) {
@@ -1434,17 +1483,38 @@ window.backToStep = function(stepNumber) {
 // 填充提取的信息到确认界面
 function fillExtractedInfo(info) {
     const container = document.getElementById('extracted-info-grid');
-    if (!container) {
-        console.error('找不到 extracted-info-grid 元素');
+    const extraContainer = document.getElementById('additional-info-container');
+    const extraInput = document.getElementById('additional-info');
+    if (!container || !extraInput || !extraContainer) {
+        console.error('找不到信息展示区域');
         return;
     }
-    
-    container.innerHTML = Object.entries(info).map(([key, value]) => `
+
+    const entries = Object.entries(info).filter(([k]) => k !== 'speculated' && k !== '_speculated');
+    const mainEntries = entries.slice(0, 3);
+    const extraEntries = entries.slice(3);
+
+    container.innerHTML = mainEntries.map(([key, value]) => `
         <div class="info-item">
             <label for="field-${key}">${formatFieldName(key)}</label>
             <input type="text" id="field-${key}" value="${escapeHtml(value)}" data-field="${key}">
         </div>
     `).join('');
+
+    if (extraEntries.length) {
+        extraContainer.style.display = 'block';
+        extraInput.value = extraEntries.map(([k, v]) => `${formatFieldName(k)}: ${v}`).join('\n');
+    } else {
+        extraContainer.style.display = 'none';
+        extraInput.value = '';
+    }
+
+    const speculated = info.speculated || info._speculated;
+    if (speculated) {
+        extraInput.classList.add('speculated');
+    } else {
+        extraInput.classList.remove('speculated');
+    }
 }
 
 // 格式化字段名称
