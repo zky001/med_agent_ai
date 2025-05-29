@@ -24,6 +24,7 @@ let currentFiles = [];
 let generationInProgress = false;
 let modalListenersInitialized = false;
 let chatHistory = [];
+let availableKnowledgeTypes = [];
 
 // HTML转义函数
 function escapeHtml(text) {
@@ -52,6 +53,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeMermaid();
     initializeChat();
     setupFileUploadListeners();
+    loadKnowledgeStats();
     
     // 确保配置正确应用
     setTimeout(() => {
@@ -1142,17 +1144,6 @@ function switchGenerationStep(stepNumber) {
     }
 }
 
-function fillExtractedInfo(info) {
-    const container = document.getElementById('extracted-info-grid');
-    if (!container) return;
-    
-    container.innerHTML = Object.entries(info).map(([key, value]) => `
-        <div class="info-item">
-            <label>${formatFieldName(key)}:</label>
-            <input type="text" value="${escapeHtml(value)}" data-field="${key}">
-        </div>
-    `).join('');
-}
 
 function formatFieldName(fieldName) {
     const nameMap = {
@@ -1174,6 +1165,7 @@ async function loadKnowledgeStats() {
             const data = await response.json();
             updateKnowledgeStatsChart(data.stats);
             updateStatsDetails(data.stats);
+            availableKnowledgeTypes = Object.keys(data.stats || {});
         }
     } catch (error) {
         console.error('加载知识库统计失败:', error);
@@ -1342,7 +1334,8 @@ let smartGenerationState = {
     confirmedInfo: null,
     generatedOutline: null,
     content: '',
-    isGenerating: false
+    isGenerating: false,
+    currentModuleIndex: 0
 };
 
 // 确认信息并生成目录
@@ -1434,17 +1427,38 @@ window.backToStep = function(stepNumber) {
 // 填充提取的信息到确认界面
 function fillExtractedInfo(info) {
     const container = document.getElementById('extracted-info-grid');
-    if (!container) {
-        console.error('找不到 extracted-info-grid 元素');
+    const extraContainer = document.getElementById('additional-info-container');
+    const extraInput = document.getElementById('additional-info');
+    if (!container || !extraInput || !extraContainer) {
+        console.error('找不到信息展示区域');
         return;
     }
-    
-    container.innerHTML = Object.entries(info).map(([key, value]) => `
+
+    const entries = Object.entries(info).filter(([k]) => k !== 'speculated' && k !== '_speculated');
+    const mainEntries = entries.slice(0, 3);
+    const extraEntries = entries.slice(3);
+
+    container.innerHTML = mainEntries.map(([key, value]) => `
         <div class="info-item">
             <label for="field-${key}">${formatFieldName(key)}</label>
             <input type="text" id="field-${key}" value="${escapeHtml(value)}" data-field="${key}">
         </div>
     `).join('');
+
+    if (extraEntries.length) {
+        extraContainer.style.display = 'block';
+        extraInput.value = extraEntries.map(([k, v]) => `${formatFieldName(k)}: ${v}`).join('\n');
+    } else {
+        extraContainer.style.display = 'none';
+        extraInput.value = '';
+    }
+
+    const speculated = info.speculated || info._speculated;
+    if (speculated) {
+        extraInput.classList.add('speculated');
+    } else {
+        extraInput.classList.remove('speculated');
+    }
 }
 
 // 格式化字段名称
@@ -1595,6 +1609,124 @@ window.startSmartGeneration = async function() {
         smartGenerationState.isGenerating = false;
     }
 };
+
+// 逐步生成整个协议
+window.startStepwiseGeneration = async function() {
+    if (smartGenerationState.isGenerating) {
+        showToast('正在生成中，请稍候...', 'warning');
+        return;
+    }
+
+    smartGenerationState.isGenerating = true;
+    smartGenerationState.currentModuleIndex = 0;
+    smartGenerationState.content = '';
+
+    switchGenerationStep(4);
+
+    const welcomeSection = document.querySelector('.right-panel .welcome-message');
+    const contentContainer = document.querySelector('.right-panel .content-container');
+    if (welcomeSection) welcomeSection.style.display = 'none';
+    if (contentContainer) {
+        contentContainer.style.display = 'block';
+        contentContainer.innerHTML = '<div class="content-viewer"><div id="streaming-content"></div></div>';
+    }
+
+    renderModuleControls();
+};
+
+function renderModuleControls() {
+    const index = smartGenerationState.currentModuleIndex;
+    const section = smartGenerationState.generatedOutline && smartGenerationState.generatedOutline[index];
+    const titleEl = document.getElementById('module-title');
+    const kbOptions = document.getElementById('kb-options');
+    const promptEl = document.getElementById('custom-prompt');
+    const btn = document.getElementById('generate-section-btn');
+
+    if (!section) {
+        titleEl.textContent = '全部章节生成完成';
+        kbOptions.innerHTML = '';
+        promptEl.style.display = 'none';
+        btn.style.display = 'none';
+        showExportOptions();
+        smartGenerationState.isGenerating = false;
+        return;
+    }
+
+    titleEl.textContent = '生成章节: ' + section.title;
+    kbOptions.innerHTML = availableKnowledgeTypes.map(t => `<label><input type="checkbox" value="${t}" checked> ${t}</label>`).join('');
+    promptEl.value = '';
+    promptEl.style.display = 'block';
+    btn.style.display = 'inline-block';
+    btn.disabled = false;
+
+    const percent = Math.round((index / smartGenerationState.generatedOutline.length) * 100);
+    const progressFill = document.getElementById('generation-progress-fill');
+    const progressText = document.getElementById('generation-progress-text');
+    if (progressFill) progressFill.style.width = `${percent}%`;
+    if (progressText) progressText.textContent = `进度 ${percent}%`;
+}
+
+async function generateCurrentSection() {
+    const index = smartGenerationState.currentModuleIndex;
+    const section = smartGenerationState.generatedOutline && smartGenerationState.generatedOutline[index];
+    if (!section) return;
+
+    const selectedTypes = Array.from(document.querySelectorAll('#kb-options input:checked')).map(el => el.value);
+    const customPrompt = document.getElementById('custom-prompt').value.trim();
+
+    const streamingContent = document.getElementById('streaming-content');
+    const btn = document.getElementById('generate-section-btn');
+    btn.disabled = true;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/generate_section_stream`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                confirmed_info: smartGenerationState.confirmedInfo,
+                section: section,
+                knowledge_types: selectedTypes,
+                custom_prompt: customPrompt,
+                settings: { detail_level: parseInt(document.getElementById('smart-creativity')?.value || 30) / 100 }
+            })
+        });
+
+        if (!response.ok) throw new Error(`API调用失败: ${response.status}`);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = '';
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value);
+            chunk.split('\n').forEach(line => {
+                if (line.startsWith('data: ')) {
+                    const data = JSON.parse(line.slice(6));
+                    if (data.error) throw new Error(data.error);
+                    if (data.content) {
+                        accumulated += data.content;
+                        smartGenerationState.content += data.content;
+                        if (marked) {
+                            streamingContent.innerHTML += marked.parse(data.content);
+                        } else {
+                            streamingContent.innerHTML += data.content.replace(/\n/g, '<br>');
+                        }
+                        streamingContent.scrollTop = streamingContent.scrollHeight;
+                    }
+                }
+            });
+        }
+
+        smartGenerationState.currentModuleIndex++;
+        renderModuleControls();
+    } catch (err) {
+        console.error('生成章节失败:', err);
+        showToast('生成章节失败: ' + err.message, 'error');
+        btn.disabled = false;
+    }
+}
 
 // 模拟生成过程
 async function startSimulatedGeneration() {

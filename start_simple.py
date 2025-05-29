@@ -674,7 +674,7 @@ async def generate_protocol_simplified(request: ProtocolGenerationRequest):
         raise HTTPException(status_code=500, detail=f"简化生成失败: {str(e)}")
 
 # 适配器函数：将embedding搜索接口适配给生成器
-async def search_knowledge_embedding(query: str, top_k: int = 5):
+async def search_knowledge_embedding(query: str, top_k: int = 5, types: Optional[List[str]] = None):
     """适配器函数：为生成器提供embedding搜索功能"""
     try:
         if not embedded_documents:
@@ -686,9 +686,11 @@ async def search_knowledge_embedding(query: str, top_k: int = 5):
         # 计算与所有文档的相似度
         results = []
         for doc in embedded_documents:
+            if types and doc['knowledge_type'] not in types:
+                continue
             similarity = cosine_similarity(query_embedding, doc['embedding'])
-            
-            if similarity > 0.1:  # 只返回相似度大于0.1的结果
+
+            if similarity > 0.1:
                 results.append({
                     "knowledge_type": doc["knowledge_type"],
                     "content": doc["content"],
@@ -1253,6 +1255,13 @@ class ProtocolStreamRequest(BaseModel):
     confirmed_info: Dict[str, Any]
     outline: List[Dict[str, Any]]
     settings: Dict[str, Any]
+
+class SectionStreamRequest(BaseModel):
+    confirmed_info: Dict[str, Any]
+    section: Dict[str, Any]
+    knowledge_types: List[str] = []
+    custom_prompt: Optional[str] = None
+    settings: Dict[str, Any] = {}
 
 class ExportProtocolRequest(BaseModel):
     content: str
@@ -1852,6 +1861,46 @@ async def generate_protocol_stream(request: ProtocolStreamRequest):
     
     return StreamingResponse(
         generate_content(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*"
+        }
+    )
+
+
+@app.post("/generate_section_stream")
+async def generate_section_stream(request: SectionStreamRequest):
+    """逐步生成单个章节内容"""
+    from fastapi.responses import StreamingResponse
+
+    async def stream():
+        try:
+            knowledge_results = []
+            if request.knowledge_types:
+                query = f"{request.confirmed_info.get('drug_type', '')} {request.confirmed_info.get('indication', '')} {request.section.get('title', '')}"
+                search = await search_knowledge_embedding(query, top_k=3, types=request.knowledge_types)
+                if search['success']:
+                    knowledge_results.extend(search['results'])
+
+            if request.custom_prompt:
+                knowledge_context = "\n\n".join([f"【{r['knowledge_type']}】\n{r['content']}" for r in knowledge_results[:3]])
+                prompt = request.custom_prompt + "\n\n" + knowledge_context
+            else:
+                prompt = generate_protocol_with_knowledge_enhancement(request.section['title'], request.confirmed_info, knowledge_results[:3])
+
+            content = call_local_llm(prompt, temperature=request.settings.get('detail_level', 0.3))
+            data = {
+                "content": f"\n## {request.section['title']}\n\n{content}\n",
+                "done": True
+            }
+            yield f"data: {json.dumps(data)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
+
+    return StreamingResponse(
+        stream(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
