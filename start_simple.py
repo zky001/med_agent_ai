@@ -372,6 +372,34 @@ async def chat_with_llm(request: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"对话失败: {str(e)}")
 
+@app.post("/chat_stream")
+async def chat_stream(request: ChatRequest):
+    """与LLM对话（流式返回）"""
+    from fastapi.responses import StreamingResponse
+    import asyncio
+
+    async def generate():
+        try:
+            reply = call_local_llm(request.message, request.temperature)
+            chunk_size = 50
+            for i in range(0, len(reply), chunk_size):
+                chunk = reply[i:i+chunk_size]
+                yield f"data: {json.dumps({'content': chunk, 'done': False})}\n\n"
+                await asyncio.sleep(0.05)
+            yield f"data: {json.dumps({'done': True})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+        },
+    )
+
 @app.post("/test/embedding")
 async def test_embedding_model():
     """测试嵌入模型"""
