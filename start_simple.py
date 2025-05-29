@@ -142,6 +142,7 @@ current_config = {
         "key": "EMPTY",
         "temperature": 0.3
     },
+
     "embedding": {
         "type": "local-api",
         "url": "http://192.168.196.151:9998/v1",
@@ -348,6 +349,53 @@ def call_local_llm_stream(message: str, system_prompt: str = None, temperature: 
         logger.error(f"LLM流式调用失败: {e}")
         raise
 
+def call_local_llm_stream(message: str, temperature: float = 0.3):
+    """以流式方式调用本地LLM模型，逐步返回内容"""
+    headers = {
+        "Authorization": f"Bearer {current_config['llm']['key']}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "model": current_config["llm"]["model"],
+        "messages": [
+            {"role": "system", "content": "你是一个专业的医学AI助手，专门帮助用户处理临床试验方案相关的问题。请用中文回复。"},
+            {"role": "user", "content": message}
+        ],
+        "temperature": temperature,
+        "max_tokens": 1000,
+        "stream": True
+    }
+
+    try:
+        with requests.post(
+            f"{current_config['llm']['url']}/chat/completions",
+            headers=headers,
+            json=data,
+            stream=True,
+            timeout=60
+        ) as r:
+            if r.status_code != 200:
+                raise ValueError(f"API调用失败: {r.status_code} - {r.text}")
+
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                if line.startswith(b'data:'):
+                    payload = line[5:].strip()
+                    if payload == b"[DONE]":
+                        break
+                    try:
+                        event = json.loads(payload.decode())
+                        delta = event.get("choices", [{}])[0].get("delta", {}).get("content")
+                        if delta:
+                            yield delta
+                    except json.JSONDecodeError:
+                        continue
+    except Exception as e:
+        logger.error(f"LLM流式调用失败: {e}")
+        raise
+
 @app.get("/")
 async def root():
     """根路径，返回API信息"""
@@ -428,10 +476,8 @@ async def chat_with_llm_stream(request: ChatRequest):
 
     async def generate_chat():
         try:
-            response_text = call_local_llm(request.message, request.temperature)
-
-            for chunk in chunk_text(response_text, chunk_size=50, overlap=0):
-                yield f"data: {json.dumps({'content': chunk})}\n\n"
+            for token in call_local_llm_stream(request.message, request.temperature):
+                yield f"data: {json.dumps({'content': token})}\n\n"
                 await asyncio.sleep(0.02)
 
             yield "data: {\"done\": true}\n\n"
@@ -1450,7 +1496,8 @@ async def extract_key_info(request: KeyInfoExtractionRequest):
             "success": True,
             "extracted_info": extracted_info,
             "original_response": response,
-            "extraction_quality": validate_extraction_quality(extracted_info)
+            "extraction_quality": validate_extraction_quality(extracted_info),
+            "prompt": extraction_prompt
         }
         
     except Exception as e:
@@ -1658,7 +1705,8 @@ async def generate_outline(request: OutlineGenerationRequest):
         return {
             "success": True,
             "outline": outline,
-            "original_response": response
+            "original_response": response,
+            "prompt": outline_prompt
         }
         
     except Exception as e:
@@ -1997,20 +2045,24 @@ async def generate_protocol_stream(request: ProtocolStreamRequest):
                     relevant_knowledge[:3]
                 )
                 
-                # 调用LLM生成该模块内容
-                module_content = call_local_llm(module_prompt, temperature=0.3)
-                
-                # 流式输出
-                chunk_data = {
-                    "content": f"\n## {section['title']}\n\n{module_content}\n",
+                # 调用LLM生成该模块内容并实时流式输出
+                section_header = f"\n## {section['title']}\n\n"
+                yield f"data: {json.dumps({'content': section_header, 'current_module': section['title'], 'done': False})}\n\n"
+                module_text = ""
+                for token in call_local_llm_stream(module_prompt, temperature=0.3):
+                    module_text += token
+                    yield f"data: {json.dumps({'content': token, 'current_module': section['title'], 'done': False})}\n\n"
+                    await asyncio.sleep(0.02)
+
+                full_content += section_header + module_text + "\n"
+
+                progress_data = {
+                    "content": "",
                     "progress": (idx + 1) / total_sections,
                     "current_module": section['title'],
                     "done": False
                 }
-                yield f"data: {json.dumps(chunk_data)}\n\n"
-                
-                full_content += chunk_data["content"]
-                await asyncio.sleep(0.1)  # 给前端时间渲染
+                yield f"data: {json.dumps(progress_data)}\n\n"
             
             # 3. 质量检查（如果启用）
             if request.settings.get('include_quality_check', True):

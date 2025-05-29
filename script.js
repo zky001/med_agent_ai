@@ -5,8 +5,8 @@ const API_BASE_URL = 'http://localhost:8000';
 let currentConfig = {
     llm: {
         type: 'local',
-        url: 'http://192.168.22.191:8000/v1',
-        model: '/home/aiteam/.cache/modelscope/hub/models/google/medgemma-27b-text-it/',
+        url: 'https://v1.voct.top/v1',
+        model: 'gpt-4.1-mini',
         key: 'EMPTY',
         temperature: 0.3
     },
@@ -622,6 +622,20 @@ function hideLoading() {
     }
 }
 
+// 在右侧显示系统提示词
+function showSystemPrompt(text) {
+    const promptEl = document.getElementById('prompt-viewer');
+    if (promptEl) {
+        if (text) {
+            promptEl.style.display = 'block';
+            promptEl.textContent = text;
+        } else {
+            promptEl.style.display = 'none';
+            promptEl.textContent = '';
+        }
+    }
+}
+
 // 格式化函数
 function formatFileSize(bytes) {
     if (bytes === 0) return '0 Bytes';
@@ -652,7 +666,7 @@ window.testLLMConnection = async function() {
     } catch (error) {
         showToast('LLM连接测试失败: ' + error.message, 'error');
     } finally {
-        hideLoading();
+        showSystemPrompt('');
     }
 };
 
@@ -682,8 +696,8 @@ window.resetConfiguration = function() {
     currentConfig = {
         llm: {
             type: 'local',
-            url: 'http://192.168.22.191:8000/v1',
-            model: '/home/aiteam/.cache/modelscope/hub/models/google/medgemma-27b-text-it/',
+            url: 'https://v1.voct.top/v1',
+            model: 'gpt-4.1-mini',
             key: 'EMPTY',
             temperature: 0.3
         },
@@ -942,6 +956,9 @@ window.sendMessage = async function() {
                 if (line.startsWith('data: ')) {
                     try {
                         const data = JSON.parse(line.slice(6));
+                        if (data.prompt) {
+                            showSystemPrompt(data.prompt);
+                        }
 
                         if (data.error) {
                             throw new Error(data.error);
@@ -2433,7 +2450,7 @@ window.proceedToOutline = async function() {
         showToast(errorMessage, 'error');
         
     } finally {
-        hideLoading();
+        showSystemPrompt('');
     }
 };
 
