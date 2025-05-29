@@ -1479,6 +1479,17 @@ function formatFieldName(fieldName) {
         primary_endpoint: '主要终点',
         study_phase: '研究阶段',
         estimated_enrollment: '预计入组'
+    };
+    return nameMap[fieldName] || fieldName;
+}
+
+// 渲染协议大纲编辑器
+function fillOutlineEditor(outline) {
+    const editor = document.getElementById('outline-editor');
+    if (!editor) return;
+
+    editor.innerHTML = `
+        <div class="outline-list">
             ${outline.map((section, index) => createOutlineItemHTML(section, index)).join('')}
         </div>
         <div class="outline-actions-bottom">
