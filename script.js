@@ -24,6 +24,7 @@ let currentFiles = [];
 let generationInProgress = false;
 let modalListenersInitialized = false;
 let chatHistory = [];
+let availableKnowledgeTypes = [];
 
 // HTML转义函数
 function escapeHtml(text) {
@@ -52,6 +53,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeMermaid();
     initializeChat();
     setupFileUploadListeners();
+    loadKnowledgeStats();
     
     // 确保配置正确应用
     setTimeout(() => {
@@ -893,23 +895,24 @@ window.viewFileDetails = async function(filename) {
 window.sendMessage = async function() {
     const chatInput = document.getElementById('chat-input');
     const message = chatInput?.value?.trim();
-    
+
     if (!message) {
         showToast('请输入消息', 'warning');
         return;
     }
-    
+
     // 添加用户消息到聊天区域
     addChatMessage('user', message);
-    
+
     // 清空输入框
     chatInput.value = '';
-    
-    // 显示正在输入状态
-    const typingIndicator = addChatMessage('assistant', '正在思考中...', true);
-    
+
+    // 创建助手消息容器
+    const assistantMsg = addChatMessage('assistant', '');
+    const textEl = assistantMsg.querySelector('.message-text');
+
     try {
-        const response = await fetch(`${API_BASE_URL}/chat`, {
+        const response = await fetch(`${API_BASE_URL}/chat_stream`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -919,28 +922,49 @@ window.sendMessage = async function() {
                 temperature: parseFloat(document.getElementById('chat-temp')?.value || '0.3')
             })
         });
-        
-        const result = await response.json();
-        
-        // 移除正在输入指示器
-        if (typingIndicator && typingIndicator.parentNode) {
-            typingIndicator.parentNode.removeChild(typingIndicator);
+
+        if (!response.ok || !response.body) {
+            throw new Error(`API调用失败: ${response.status}`);
         }
-        
-        if (result.success) {
-            addChatMessage('assistant', result.response);
-            updateChatStats();
-        } else {
-            addChatMessage('assistant', '抱歉，我遇到了一些问题：' + result.message);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = '';
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+
+                        if (data.error) {
+                            throw new Error(data.error);
+                        }
+
+                        if (data.content) {
+                            accumulated += data.content;
+                            textEl.innerHTML = escapeHtml(accumulated).replace(/\n/g, '<br>');
+                        }
+
+                        if (data.done) {
+                            updateChatStats();
+                            return;
+                        }
+                    } catch (err) {
+                        console.warn('解析流数据失败:', err);
+                    }
+                }
+            }
         }
-        
+
     } catch (error) {
-        // 移除正在输入指示器
-        if (typingIndicator && typingIndicator.parentNode) {
-            typingIndicator.parentNode.removeChild(typingIndicator);
-        }
-        
-        addChatMessage('assistant', '抱歉，网络连接出现问题：' + error.message);
+        textEl.textContent = '抱歉，网络连接出现问题：' + error.message;
     }
 };
 
@@ -1129,6 +1153,32 @@ function updateChatStats() {
     if (statusEl) statusEl.textContent = '已连接';
 }
 
+function switchGenerationStep(stepNumber) {
+    // 隐藏所有步骤
+    document.querySelectorAll('.generation-step').forEach(step => {
+        step.classList.remove('active');
+    });
+    
+    // 显示目标步骤
+    const targetStep = document.querySelector(`#step-${stepNumber}`);
+    if (targetStep) {
+        targetStep.classList.add('active');
+    }
+}
+
+function formatFieldName(fieldName) {
+    const nameMap = {
+        study_type: '研究类型',
+        drug_type: '药物类型',
+        indication: '适应症',
+        patient_population: '患者人群',
+        primary_endpoint: '主要终点',
+        study_phase: '研究阶段',
+        estimated_enrollment: '预计入组'
+    };
+    return nameMap[fieldName] || fieldName;
+}
+
 
 async function loadKnowledgeStats() {
     try {
@@ -1137,6 +1187,7 @@ async function loadKnowledgeStats() {
             const data = await response.json();
             updateKnowledgeStatsChart(data.stats);
             updateStatsDetails(data.stats);
+            availableKnowledgeTypes = Object.keys(data.stats || {});
         }
     } catch (error) {
         console.error('加载知识库统计失败:', error);
@@ -1305,7 +1356,8 @@ let smartGenerationState = {
     confirmedInfo: null,
     generatedOutline: null,
     content: '',
-    isGenerating: false
+    isGenerating: false,
+    currentModuleIndex: 0
 };
 
 // 确认信息并生成目录
@@ -1551,6 +1603,124 @@ window.startSmartGeneration = async function() {
         smartGenerationState.isGenerating = false;
     }
 };
+
+// 逐步生成整个协议
+window.startStepwiseGeneration = async function() {
+    if (smartGenerationState.isGenerating) {
+        showToast('正在生成中，请稍候...', 'warning');
+        return;
+    }
+
+    smartGenerationState.isGenerating = true;
+    smartGenerationState.currentModuleIndex = 0;
+    smartGenerationState.content = '';
+
+    switchGenerationStep(4);
+
+    const welcomeSection = document.querySelector('.right-panel .welcome-message');
+    const contentContainer = document.querySelector('.right-panel .content-container');
+    if (welcomeSection) welcomeSection.style.display = 'none';
+    if (contentContainer) {
+        contentContainer.style.display = 'block';
+        contentContainer.innerHTML = '<div class="content-viewer"><div id="streaming-content"></div></div>';
+    }
+
+    renderModuleControls();
+};
+
+function renderModuleControls() {
+    const index = smartGenerationState.currentModuleIndex;
+    const section = smartGenerationState.generatedOutline && smartGenerationState.generatedOutline[index];
+    const titleEl = document.getElementById('module-title');
+    const kbOptions = document.getElementById('kb-options');
+    const promptEl = document.getElementById('custom-prompt');
+    const btn = document.getElementById('generate-section-btn');
+
+    if (!section) {
+        titleEl.textContent = '全部章节生成完成';
+        kbOptions.innerHTML = '';
+        promptEl.style.display = 'none';
+        btn.style.display = 'none';
+        showExportOptions();
+        smartGenerationState.isGenerating = false;
+        return;
+    }
+
+    titleEl.textContent = '生成章节: ' + section.title;
+    kbOptions.innerHTML = availableKnowledgeTypes.map(t => `<label><input type="checkbox" value="${t}" checked> ${t}</label>`).join('');
+    promptEl.value = '';
+    promptEl.style.display = 'block';
+    btn.style.display = 'inline-block';
+    btn.disabled = false;
+
+    const percent = Math.round((index / smartGenerationState.generatedOutline.length) * 100);
+    const progressFill = document.getElementById('generation-progress-fill');
+    const progressText = document.getElementById('generation-progress-text');
+    if (progressFill) progressFill.style.width = `${percent}%`;
+    if (progressText) progressText.textContent = `进度 ${percent}%`;
+}
+
+async function generateCurrentSection() {
+    const index = smartGenerationState.currentModuleIndex;
+    const section = smartGenerationState.generatedOutline && smartGenerationState.generatedOutline[index];
+    if (!section) return;
+
+    const selectedTypes = Array.from(document.querySelectorAll('#kb-options input:checked')).map(el => el.value);
+    const customPrompt = document.getElementById('custom-prompt').value.trim();
+
+    const streamingContent = document.getElementById('streaming-content');
+    const btn = document.getElementById('generate-section-btn');
+    btn.disabled = true;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/generate_section_stream`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                confirmed_info: smartGenerationState.confirmedInfo,
+                section: section,
+                knowledge_types: selectedTypes,
+                custom_prompt: customPrompt,
+                settings: { detail_level: parseInt(document.getElementById('smart-creativity')?.value || 30) / 100 }
+            })
+        });
+
+        if (!response.ok) throw new Error(`API调用失败: ${response.status}`);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = '';
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value);
+            chunk.split('\n').forEach(line => {
+                if (line.startsWith('data: ')) {
+                    const data = JSON.parse(line.slice(6));
+                    if (data.error) throw new Error(data.error);
+                    if (data.content) {
+                        accumulated += data.content;
+                        smartGenerationState.content += data.content;
+                        if (marked) {
+                            streamingContent.innerHTML += marked.parse(data.content);
+                        } else {
+                            streamingContent.innerHTML += data.content.replace(/\n/g, '<br>');
+                        }
+                        streamingContent.scrollTop = streamingContent.scrollHeight;
+                    }
+                }
+            });
+        }
+
+        smartGenerationState.currentModuleIndex++;
+        renderModuleControls();
+    } catch (err) {
+        console.error('生成章节失败:', err);
+        showToast('生成章节失败: ' + err.message, 'error');
+        btn.disabled = false;
+    }
+}
 
 // 模拟生成过程
 async function startSimulatedGeneration() {
