@@ -1581,6 +1581,26 @@ body {
     box-shadow: 0 0 0 3px rgba(74, 108, 247, 0.1);
 }
 
+.additional-info {
+    margin-top: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.additional-info textarea {
+    width: 100%;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border: 2px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-size: var(--font-size-base);
+}
+
+.additional-info textarea.speculated {
+    border-color: var(--danger-color);
+    background-color: #ffe6e6;
+}
+
 .confirmation-actions {
     display: flex;
     gap: var(--spacing-md);

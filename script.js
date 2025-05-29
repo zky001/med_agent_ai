@@ -1129,43 +1129,6 @@ function updateChatStats() {
     if (statusEl) statusEl.textContent = '已连接';
 }
 
-function switchGenerationStep(stepNumber) {
-    // 隐藏所有步骤
-    document.querySelectorAll('.generation-step').forEach(step => {
-        step.classList.remove('active');
-    });
-    
-    // 显示目标步骤
-    const targetStep = document.querySelector(`#step-${stepNumber}`);
-    if (targetStep) {
-        targetStep.classList.add('active');
-    }
-}
-
-function fillExtractedInfo(info) {
-    const container = document.getElementById('extracted-info-grid');
-    if (!container) return;
-    
-    container.innerHTML = Object.entries(info).map(([key, value]) => `
-        <div class="info-item">
-            <label>${formatFieldName(key)}:</label>
-            <input type="text" value="${escapeHtml(value)}" data-field="${key}">
-        </div>
-    `).join('');
-}
-
-function formatFieldName(fieldName) {
-    const nameMap = {
-        study_type: '研究类型',
-        drug_type: '药物类型',
-        indication: '适应症',
-        patient_population: '患者人群',
-        primary_endpoint: '主要终点',
-        study_phase: '研究阶段',
-        estimated_enrollment: '预计入组'
-    };
-    return nameMap[fieldName] || fieldName;
-}
 
 async function loadKnowledgeStats() {
     try {
@@ -1416,35 +1379,42 @@ window.proceedToOutline = async function() {
     }
 };
 
-// 返回到步骤1修改
-window.backToStep = function(stepNumber) {
-    console.log('返回到步骤:', stepNumber);
-    switchGenerationStep(stepNumber);
-    
-    if (stepNumber < 4) {
-        // 如果返回到步骤4之前，显示欢迎界面
-        const welcomeSection = document.querySelector('.right-panel .welcome-message');
-        const contentDisplay = document.querySelector('.right-panel .content-container');
-        
-        if (welcomeSection) welcomeSection.style.display = 'block';
-        if (contentDisplay) contentDisplay.style.display = 'none';
-    }
-};
 
 // 填充提取的信息到确认界面
 function fillExtractedInfo(info) {
     const container = document.getElementById('extracted-info-grid');
-    if (!container) {
-        console.error('找不到 extracted-info-grid 元素');
+    const extraContainer = document.getElementById('additional-info-container');
+    const extraInput = document.getElementById('additional-info');
+    if (!container || !extraInput || !extraContainer) {
+        console.error('找不到信息展示区域');
         return;
     }
-    
-    container.innerHTML = Object.entries(info).map(([key, value]) => `
+
+    const entries = Object.entries(info).filter(([k]) => k !== 'speculated' && k !== '_speculated');
+    const mainEntries = entries.slice(0, 3);
+    const extraEntries = entries.slice(3);
+
+    container.innerHTML = mainEntries.map(([key, value]) => `
         <div class="info-item">
             <label for="field-${key}">${formatFieldName(key)}</label>
             <input type="text" id="field-${key}" value="${escapeHtml(value)}" data-field="${key}">
         </div>
     `).join('');
+
+    if (extraEntries.length) {
+        extraContainer.style.display = 'block';
+        extraInput.value = extraEntries.map(([k, v]) => `${formatFieldName(k)}: ${v}`).join('\n');
+    } else {
+        extraContainer.style.display = 'none';
+        extraInput.value = '';
+    }
+
+    const speculated = info.speculated || info._speculated;
+    if (speculated) {
+        extraInput.classList.add('speculated');
+    } else {
+        extraInput.classList.remove('speculated');
+    }
 }
 
 // 格式化字段名称
@@ -1457,20 +1427,6 @@ function formatFieldName(fieldName) {
         primary_endpoint: '主要终点',
         study_phase: '研究阶段',
         estimated_enrollment: '预计入组'
-    };
-    return nameMap[fieldName] || fieldName;
-}
-
-// 填充大纲编辑器
-function fillOutlineEditor(outline) {
-    const container = document.querySelector('#step-3 .outline-editor');
-    if (!container) {
-        console.error('找不到大纲编辑器容器');
-        return;
-    }
-    
-    container.innerHTML = `
-        <div class="outline-tree">
             ${outline.map((section, index) => createOutlineItemHTML(section, index)).join('')}
         </div>
         <div class="outline-actions-bottom">
@@ -1810,29 +1766,6 @@ window.copySmartResult = function() {
 };
 
 // 切换生成步骤
-function switchGenerationStep(stepNumber) {
-    console.log('切换到生成步骤:', stepNumber);
-    
-    // 隐藏所有步骤
-    document.querySelectorAll('.generation-step').forEach(step => {
-        step.classList.remove('active');
-    });
-    
-    // 显示目标步骤
-    const targetStep = document.querySelector(`#step-${stepNumber}`);
-    if (targetStep) {
-        targetStep.classList.add('active');
-        console.log(`步骤 ${stepNumber} 已激活`);
-    } else {
-        console.error(`找不到步骤 ${stepNumber} 的元素`);
-    }
-    
-    // 更新步骤指示器
-    updateStepIndicator(stepNumber);
-    
-    // 更新状态
-    smartGenerationState.currentStep = stepNumber;
-}
 
 // 更新步骤指示器
 function updateStepIndicator(currentStep) {
