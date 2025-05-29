@@ -1144,14 +1144,39 @@ function switchGenerationStep(stepNumber) {
 
 function fillExtractedInfo(info) {
     const container = document.getElementById('extracted-info-grid');
-    if (!container) return;
-    
-    container.innerHTML = Object.entries(info).map(([key, value]) => `
+    const extraContainer = document.getElementById('additional-info-container');
+    const extraInput = document.getElementById('additional-info');
+    if (!container || !extraInput || !extraContainer) return;
+
+    // 拆分前三项与其余信息
+    const entries = Object.entries(info).filter(([k]) => k !== 'speculated' && k !== '_speculated');
+    const mainEntries = entries.slice(0, 3);
+    const extraEntries = entries.slice(3);
+
+    // 渲染前三项
+    container.innerHTML = mainEntries.map(([key, value]) => `
         <div class="info-item">
             <label>${formatFieldName(key)}:</label>
             <input type="text" value="${escapeHtml(value)}" data-field="${key}">
         </div>
     `).join('');
+
+    // 处理附加信息
+    if (extraEntries.length) {
+        extraContainer.style.display = 'block';
+        extraInput.value = extraEntries.map(([k, v]) => `${formatFieldName(k)}: ${v}`).join('\n');
+    } else {
+        extraContainer.style.display = 'none';
+        extraInput.value = '';
+    }
+
+    // 根据推测标记显示颜色
+    const speculated = info.speculated || info._speculated;
+    if (speculated) {
+        extraInput.classList.add('speculated');
+    } else {
+        extraInput.classList.remove('speculated');
+    }
 }
 
 function formatFieldName(fieldName) {
@@ -1434,17 +1459,38 @@ window.backToStep = function(stepNumber) {
 // 填充提取的信息到确认界面
 function fillExtractedInfo(info) {
     const container = document.getElementById('extracted-info-grid');
-    if (!container) {
-        console.error('找不到 extracted-info-grid 元素');
+    const extraContainer = document.getElementById('additional-info-container');
+    const extraInput = document.getElementById('additional-info');
+    if (!container || !extraInput || !extraContainer) {
+        console.error('找不到信息展示区域');
         return;
     }
-    
-    container.innerHTML = Object.entries(info).map(([key, value]) => `
+
+    const entries = Object.entries(info).filter(([k]) => k !== 'speculated' && k !== '_speculated');
+    const mainEntries = entries.slice(0, 3);
+    const extraEntries = entries.slice(3);
+
+    container.innerHTML = mainEntries.map(([key, value]) => `
         <div class="info-item">
             <label for="field-${key}">${formatFieldName(key)}</label>
             <input type="text" id="field-${key}" value="${escapeHtml(value)}" data-field="${key}">
         </div>
     `).join('');
+
+    if (extraEntries.length) {
+        extraContainer.style.display = 'block';
+        extraInput.value = extraEntries.map(([k, v]) => `${formatFieldName(k)}: ${v}`).join('\n');
+    } else {
+        extraContainer.style.display = 'none';
+        extraInput.value = '';
+    }
+
+    const speculated = info.speculated || info._speculated;
+    if (speculated) {
+        extraInput.classList.add('speculated');
+    } else {
+        extraInput.classList.remove('speculated');
+    }
 }
 
 // 格式化字段名称
