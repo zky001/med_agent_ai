@@ -1835,6 +1835,16 @@ body {
     overflow: hidden;
 }
 
+.prompt-viewer {
+    background: var(--light-color);
+    border-bottom: 1px solid var(--border-color);
+    padding: var(--spacing-md);
+    font-family: monospace;
+    white-space: pre-wrap;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
 .content-viewer {
     padding: var(--spacing-lg);
     max-height: 600px;

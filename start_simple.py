@@ -1401,7 +1401,8 @@ async def extract_key_info(request: KeyInfoExtractionRequest):
             "success": True,
             "extracted_info": extracted_info,
             "original_response": response,
-            "extraction_quality": validate_extraction_quality(extracted_info)
+            "extraction_quality": validate_extraction_quality(extracted_info),
+            "prompt": extraction_prompt
         }
         
     except Exception as e:
@@ -1539,7 +1540,8 @@ async def generate_outline(request: OutlineGenerationRequest):
         return {
             "success": True,
             "outline": outline,
-            "original_response": response
+            "original_response": response,
+            "prompt": outline_prompt
         }
         
     except Exception as e:
@@ -1821,15 +1823,18 @@ async def generate_protocol_stream(request: ProtocolStreamRequest):
                 
                 # 构建该模块的生成提示词
                 module_prompt = generate_protocol_with_knowledge_enhancement(
-                    section['title'], 
+                    section['title'],
                     request.confirmed_info,
                     relevant_knowledge[:3]
                 )
-                
+
+                # 首先将提示词发送给前端
+                yield f"data: {json.dumps({'prompt': module_prompt, 'current_module': section['title']})}\n\n"
+
                 # 调用LLM生成该模块内容
                 module_content = call_local_llm(module_prompt, temperature=0.3)
-                
-                # 流式输出
+
+                # 流式输出内容
                 chunk_data = {
                     "content": f"\n## {section['title']}\n\n{module_content}\n",
                     "progress": (idx + 1) / total_sections,
@@ -1916,6 +1921,9 @@ async def generate_section_stream(request: SectionStreamRequest):
                 prompt = request.custom_prompt + "\n\n" + knowledge_context
             else:
                 prompt = generate_protocol_with_knowledge_enhancement(request.section['title'], request.confirmed_info, knowledge_results[:3])
+
+            # 先发送提示词
+            yield f"data: {json.dumps({'prompt': prompt})}\n\n"
 
             content = call_local_llm(prompt, temperature=request.settings.get('detail_level', 0.3))
             data = {

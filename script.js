@@ -622,6 +622,20 @@ function hideLoading() {
     }
 }
 
+// 在右侧显示系统提示词
+function showSystemPrompt(text) {
+    const promptEl = document.getElementById('prompt-viewer');
+    if (promptEl) {
+        if (text) {
+            promptEl.style.display = 'block';
+            promptEl.textContent = text;
+        } else {
+            promptEl.style.display = 'none';
+            promptEl.textContent = '';
+        }
+    }
+}
+
 // 格式化函数
 function formatFileSize(bytes) {
     if (bytes === 0) return '0 Bytes';
@@ -652,7 +666,7 @@ window.testLLMConnection = async function() {
     } catch (error) {
         showToast('LLM连接测试失败: ' + error.message, 'error');
     } finally {
-        hideLoading();
+        showSystemPrompt('');
     }
 };
 
@@ -942,6 +956,9 @@ window.sendMessage = async function() {
                 if (line.startsWith('data: ')) {
                     try {
                         const data = JSON.parse(line.slice(6));
+                        if (data.prompt) {
+                            showSystemPrompt(data.prompt);
+                        }
 
                         if (data.error) {
                             throw new Error(data.error);
@@ -1709,6 +1726,9 @@ async function generateCurrentSection() {
             chunk.split('\n').forEach(line => {
                 if (line.startsWith('data: ')) {
                     const data = JSON.parse(line.slice(6));
+                    if (data.prompt) {
+                        showSystemPrompt(data.prompt);
+                    }
                     if (data.error) throw new Error(data.error);
                     if (data.content) {
                         accumulated += data.content;
@@ -2265,7 +2285,7 @@ window.extractKeyInfo = async function() {
         return;
     }
     
-    showLoading('正在调用AI模型提取关键信息...');
+    showSystemPrompt('正在调用AI模型提取关键信息...');
     
     try {
         console.log('📤 发送请求到真实API:', inputText);
@@ -2290,6 +2310,9 @@ window.extractKeyInfo = async function() {
         
         const data = await response.json();
         console.log('📥 API返回数据:', data);
+        if (data.prompt) {
+            showSystemPrompt(data.prompt);
+        }
         
         if (!data.success) {
             throw new Error(data.message || '信息提取失败');
@@ -2366,8 +2389,8 @@ window.proceedToOutline = async function() {
         
         smartGenerationState.confirmedInfo = confirmedInfo;
         
-        // 显示加载状态
-        showLoading('正在调用AI模型生成协议大纲...');
+        // 显示系统提示词
+        showSystemPrompt('正在调用AI模型生成协议大纲...');
         
         // 调用真实的后端API生成大纲
         const response = await fetch(`${API_BASE_URL}/generate_outline`, {
@@ -2390,6 +2413,9 @@ window.proceedToOutline = async function() {
         
         const data = await response.json();
         console.log('📥 大纲生成API返回数据:', data);
+        if (data.prompt) {
+            showSystemPrompt(data.prompt);
+        }
         
         if (!data.success) {
             throw new Error(data.message || '大纲生成失败');
@@ -2427,7 +2453,7 @@ window.proceedToOutline = async function() {
         showToast(errorMessage, 'error');
         
     } finally {
-        hideLoading();
+        showSystemPrompt('');
     }
 };
 
