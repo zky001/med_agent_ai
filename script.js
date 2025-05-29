@@ -5,8 +5,8 @@ const API_BASE_URL = 'http://localhost:8000';
 let currentConfig = {
     llm: {
         type: 'local',
-        url: 'http://192.168.22.191:8000/v1',
-        model: '/home/aiteam/.cache/modelscope/hub/models/google/medgemma-27b-text-it/',
+        url: 'https://v1.voct.top/v1',
+        model: 'gpt-4.1-mini',
         key: 'EMPTY',
         temperature: 0.3
     },
@@ -696,8 +696,8 @@ window.resetConfiguration = function() {
     currentConfig = {
         llm: {
             type: 'local',
-            url: 'http://192.168.22.191:8000/v1',
-            model: '/home/aiteam/.cache/modelscope/hub/models/google/medgemma-27b-text-it/',
+            url: 'https://v1.voct.top/v1',
+            model: 'gpt-4.1-mini',
             key: 'EMPTY',
             temperature: 0.3
         },
