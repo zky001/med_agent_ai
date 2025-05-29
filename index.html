@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>医学AI Agent - 临床试验方案智能撰写系统</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🔬</text></svg>">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Chart.js for visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Flow chart library -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <!-- Marked.js for markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- DOMPurify for safe HTML rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <i class="fas fa-microscope"></i>
+                <span>医学AI Agent</span>
+            </div>
+            <nav class="nav">
+                <button class="nav-btn active" data-tab="home">首页</button>
+                <button class="nav-btn" data-tab="config">模型配置</button>
+                <button class="nav-btn" data-tab="chat">LLM对话</button>
+                <button class="nav-btn" data-tab="upload">知识库管理</button>
+                <button class="nav-btn" data-tab="generate">方案生成</button>
+                <button class="nav-btn" data-tab="process">流程可视化</button>
+            </nav>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Home Tab -->
+            <div id="home" class="tab-content active">
+                <div class="hero-section">
+                    <h1>临床试验方案智能撰写系统</h1>
+                    <p class="subtitle">专门用于恶性肿瘤细胞基因治疗（CGT）领域的AI辅助方案撰写</p>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <i class="fas fa-robot"></i>
+                            <h3>智能生成</h3>
+                            <p>支持多种AI模型，本地部署安全可控</p>
+                        </div>
+                        <div class="stat-card">
+                            <i class="fas fa-database"></i>
+                            <h3>知识库增强</h3>
+                            <p>支持Excel、PDF等多格式文档上传</p>
+                        </div>
+                        <div class="stat-card">
+                            <i class="fas fa-shield-alt"></i>
+                            <h3>质量保证</h3>
+                            <p>自动质量检查，确保合规性</p>
+                        </div>
+                        <div class="stat-card">
+                            <i class="fas fa-download"></i>
+                            <h3>便捷导出</h3>
+                            <p>一键生成Word格式标准方案</p>
+                        </div>
+                    </div>
+
+                    <div class="quick-start">
+                        <h3><i class="fas fa-rocket"></i> 快速开始</h3>
+                        <div class="quick-actions">
+                            <button class="btn btn-primary btn-lg" onclick="switchTab('generate')">
+                                <i class="fas fa-file-medical"></i> 新建临床试验方案
+                            </button>
+                            <button class="btn btn-secondary btn-lg" onclick="switchTab('upload')">
+                                <i class="fas fa-cloud-upload-alt"></i> 上传参考文档
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="system-status">
+                        <h3><i class="fas fa-heartbeat"></i> 系统状态</h3>
+                        <div class="status-grid">
+                            <div class="status-item">
+                                <span class="status-label">API服务</span>
+                                <span class="status-value" id="api-status">检查中...</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">LLM模型</span>
+                                <span class="status-value" id="llm-status">检查中...</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">知识库</span>
+                                <span class="status-value" id="kb-status">检查中...</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">文档总数</span>
+                                <span class="status-value" id="doc-count">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Config Tab -->
+            <div id="config" class="tab-content">
+                <div class="config-section">
+                    <h2><i class="fas fa-cog"></i> 模型配置</h2>
+                    
+                    <div class="config-grid">
+                        <!-- LLM Model Configuration -->
+                        <div class="config-card">
+                            <h3><i class="fas fa-brain"></i> 大语言模型 (LLM)</h3>
+                            <div class="form-group">
+                                <label for="llm-type">模型类型</label>
+                                <select id="llm-type" class="form-control">
+                                    <option value="local">本地模型</option>
+                                    <option value="openai">OpenAI</option>
+                                    <option value="deepseek">Deepseek</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="llm-url">API地址</label>
+                                <input type="text" id="llm-url" class="form-control" 
+                                       value="http://192.168.22.191:8000/v1" placeholder="API Base URL">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="llm-model">模型名称</label>
+                                <input type="text" id="llm-model" class="form-control" 
+                                       value="/home/aiteam/.cache/modelscope/hub/models/google/medgemma-27b-text-it/"
+                                       placeholder="模型名称或路径">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="llm-key">API密钥</label>
+                                <input type="password" id="llm-key" class="form-control" 
+                                       placeholder="API Key (可选)">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="llm-temp">生成温度 <span id="temp-value">0.3</span></label>
+                                <input type="range" id="llm-temp" class="range-control" 
+                                       min="0" max="1" step="0.1" value="0.3">
+                            </div>
+                            
+                            <button class="btn btn-primary" onclick="testLLMConnection()">
+                                <i class="fas fa-plug"></i> 测试连接
+                            </button>
+                        </div>
+
+                        <!-- Embedding Model Configuration -->
+                        <div class="config-card">
+                            <h3><i class="fas fa-vector-square"></i> 嵌入模型</h3>
+                            <div class="form-group">
+                                <label for="embed-type">模型类型</label>
+                                <select id="embed-type" class="form-control">
+                                    <option value="sentence-transformers">SentenceTransformers</option>
+                                    <option value="openai">OpenAI Embeddings</option>
+                                    <option value="local-api" selected>本地API (OpenAI兼容)</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group" id="embed-url-group">
+                                <label for="embed-url">API地址</label>
+                                <input type="text" id="embed-url" class="form-control" 
+                                       value="http://192.168.196.151:9998/v1" placeholder="嵌入模型API地址">
+                            </div>
+                            
+                            <div class="form-group" id="embed-key-group">
+                                <label for="embed-key">API密钥</label>
+                                <input type="password" id="embed-key" class="form-control" 
+                                       value="EMPTY" placeholder="API Key (可选)">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="embed-model">模型名称</label>
+                                <input type="text" id="embed-model" class="form-control" 
+                                       value="bge-large-zh-v1.5" placeholder="嵌入模型名称">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="embed-dim">向量维度</label>
+                                <input type="number" id="embed-dim" class="form-control" 
+                                       value="1024" placeholder="向量维度">
+                            </div>
+                            
+                            <button class="btn btn-secondary" onclick="testEmbeddingModel()">
+                                <i class="fas fa-search"></i> 测试嵌入
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="config-actions">
+                        <button class="btn btn-success" onclick="saveConfiguration()">
+                            <i class="fas fa-save"></i> 保存配置
+                        </button>
+                        <button class="btn btn-warning" onclick="resetConfiguration()">
+                            <i class="fas fa-undo"></i> 重置配置
+                        </button>
+                        <button class="btn btn-info" onclick="exportConfiguration()">
+                            <i class="fas fa-download"></i> 导出配置
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Tab -->
+            <div id="chat" class="tab-content">
+                <div class="chat-section">
+                    <h2><i class="fas fa-comments"></i> LLM对话</h2>
+                    <p class="subtitle">与您配置的大语言模型直接对话，测试模型性能和连接状态</p>
+                    
+                    <div class="chat-container">
+                        <!-- Chat Messages Area -->
+                        <div class="chat-messages" id="chat-messages">
+                            <div class="chat-welcome">
+                                <div class="welcome-icon">
+                                    <i class="fas fa-robot"></i>
+                                </div>
+                                <h3>欢迎使用医学AI助手</h3>
+                                <p>您可以在这里直接与配置的LLM模型对话</p>
+                                <p class="model-info">当前模型：<span id="current-model-display">正在加载...</span></p>
+                            </div>
+                        </div>
+                        
+                        <!-- Chat Input Area -->
+                        <div class="chat-input-container">
+                            <div class="chat-input-wrapper">
+                                <textarea id="chat-input" class="chat-input" 
+                                          placeholder="输入您的问题，例如：帮我解释一下TCR-T细胞疗法的作用机制..." 
+                                          rows="3"></textarea>
+                                <div class="chat-controls">
+                                    <div class="chat-options">
+                                        <label>
+                                            <span>温度:</span>
+                                            <input type="range" id="chat-temp" min="0" max="1" step="0.1" value="0.3" class="temp-slider">
+                                            <span id="chat-temp-value">0.3</span>
+                                        </label>
+                                    </div>
+                                    <div class="chat-buttons">
+                                        <button class="btn btn-secondary" onclick="clearChat()">
+                                            <i class="fas fa-trash"></i> 清空
+                                        </button>
+                                        <button class="btn btn-primary" onclick="sendMessage()" id="send-btn">
+                                            <i class="fas fa-paper-plane"></i> 发送
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Quick Questions -->
+                    <div class="quick-questions">
+                        <h4><i class="fas fa-lightbulb"></i> 快速问题</h4>
+                        <div class="question-buttons">
+                            <button class="btn btn-outline" onclick="sendQuickQuestion('什么是TCR-T细胞疗法？')">
+                                TCR-T细胞疗法介绍
+                            </button>
+                            <button class="btn btn-outline" onclick="sendQuickQuestion('I期临床试验的设计要点是什么？')">
+                                I期试验设计要点
+                            </button>
+                            <button class="btn btn-outline" onclick="sendQuickQuestion('如何设计安全性评估方案？')">
+                                安全性评估方案
+                            </button>
+                            <button class="btn btn-outline" onclick="sendQuickQuestion('临床试验的样本量如何计算？')">
+                                样本量计算方法
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Chat Statistics -->
+                    <div class="chat-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">对话轮数:</span>
+                            <span class="stat-value" id="chat-rounds">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">总字符数:</span>
+                            <span class="stat-value" id="total-chars">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">平均响应时间:</span>
+                            <span class="stat-value" id="avg-response-time">0ms</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">连接状态:</span>
+                            <span class="stat-value" id="connection-status">未知</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Upload Tab -->
+            <div id="upload" class="tab-content">
+                <div class="upload-section">
+                    <h2><i class="fas fa-cloud-upload-alt"></i> 知识库管理</h2>
+                    
+                    <div class="upload-grid">
+                        <!-- File Upload -->
+                        <div class="upload-card">
+                            <h3><i class="fas fa-file-upload"></i> 文件上传</h3>
+                            
+                            <div class="drag-drop-area" id="drag-drop-area">
+                                <div class="upload-icon">
+                                    <i class="fas fa-cloud-upload-alt"></i>
+                                </div>
+                                <p>拖拽文件到此处或点击选择文件</p>
+                                <p class="upload-hint">支持 Excel, CSV, PDF, Word, 文本文件</p>
+                                <input type="file" id="file-input" multiple accept=".xlsx,.xls,.csv,.pdf,.docx,.doc,.txt,.md">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="kb-type">知识库类型</label>
+                                <select id="kb-type" class="form-control">
+                                    <option value="临床试验方案示例">临床试验方案示例</option>
+                                    <option value="肿瘤临床指南">肿瘤临床指南</option>
+                                    <option value="医学文献">医学文献</option>
+                                    <option value="CGT药物研发资料">CGT药物研发资料</option>
+                                    <option value="Excel数据表">Excel数据表</option>
+                                    <option value="用户上传文档">用户上传文档</option>
+                                </select>
+                            </div>
+                            
+                            <button class="btn btn-primary" onclick="uploadFiles()">
+                                <i class="fas fa-upload"></i> 开始上传
+                            </button>
+                        </div>
+
+                        <!-- Knowledge Base Stats -->
+                        <div class="kb-stats-card">
+                            <h3><i class="fas fa-chart-bar"></i> 知识库统计</h3>
+                            <div id="kb-stats-container">
+                                <canvas id="kb-stats-chart"></canvas>
+                            </div>
+                            <div class="stats-details" id="stats-details">
+                                <!-- 动态加载统计信息 -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- File Management -->
+                    <div class="file-management">
+                        <h3><i class="fas fa-folder-open"></i> 文件管理</h3>
+                        <div class="file-list" id="file-list">
+                            <!-- 动态加载文件列表 -->
+                        </div>
+                    </div>
+
+                    <!-- Knowledge Search -->
+                    <div class="search-section">
+                        <h3><i class="fas fa-search"></i> 知识库搜索测试</h3>
+                        <div class="search-bar">
+                            <input type="text" id="search-input" class="form-control" 
+                                   placeholder="输入搜索关键词，例如：TCR-T 肺癌">
+                            <button class="btn btn-primary" onclick="searchKnowledge()">
+                                <i class="fas fa-search"></i> 搜索
+                            </button>
+                        </div>
+                        <div class="search-results" id="search-results">
+                            <!-- 搜索结果 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Generate Tab - 优化后的版本 -->
+            <div id="generate" class="tab-content">
+                <div class="smart-generate-section">
+                    <h2><i class="fas fa-brain"></i> 智能方案生成</h2>
+                    
+                    <!-- 智能生成界面布局 -->
+                    <div class="smart-generate-layout">
+                        <!-- 左侧输入和控制区域 -->
+                        <div class="left-panel">
+                            <!-- 步骤1: 需求输入 -->
+                            <div class="generation-step active" id="step-1" data-step="1">
+                                <div class="step-header">
+                                    <div class="step-indicator">
+                                        <span class="step-number">1</span>
+                                        <div class="step-status">
+                                            <i class="fas fa-edit"></i>
+                                            <span>需求输入</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="step-content">
+                                    <div class="input-section">
+                                        <label for="smart-requirement-input">请详细描述您的临床试验研究需求</label>
+                                        <textarea id="smart-requirement-input" class="smart-textarea" 
+                                                  placeholder="例如：设计一项TCR-T细胞药物治疗晚期肺鳞癌的I期临床研究，验证药物的耐受性、安全性和初步有效性..."
+                                                  rows="8"></textarea>
+                                        
+                                        <div class="smart-examples">
+                                            <span class="examples-label">快速选择示例：</span>
+                                            <div class="example-chips">
+                                                <button class="chip-btn" onclick="fillSmartExample(1)">
+                                                    <i class="fas fa-microscope"></i>
+                                                    TCR-T治疗肺鳞癌
+                                                </button>
+                                                <button class="chip-btn" onclick="fillSmartExample(2)">
+                                                    <i class="fas fa-dna"></i>
+                                                    CAR-T治疗淋巴瘤
+                                                </button>
+                                                <button class="chip-btn" onclick="fillSmartExample(3)">
+                                                    <i class="fas fa-shield-virus"></i>
+                                                    免疫联合治疗
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="input-actions">
+                                            <button class="btn btn-primary btn-lg" onclick="extractKeyInfo()">
+                                                <i class="fas fa-wand-magic-sparkles"></i>
+                                                智能提取关键信息
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 步骤2: 信息确认 -->
+                            <div class="generation-step" id="step-2" data-step="2">
+                                <div class="step-header">
+                                    <div class="step-indicator">
+                                        <span class="step-number">2</span>
+                                        <div class="step-status">
+                                            <i class="fas fa-check-circle"></i>
+                                            <span>信息确认</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="step-content">
+                                    <div class="extracted-info-section">
+                                        <p class="section-description">AI已自动提取关键信息，请确认或调整：</p>
+                                        
+                                        <div class="info-grid" id="extracted-info-grid">
+                                            <!-- 动态生成的提取信息 -->
+                                        </div>
+                                        
+                                        <div class="confirmation-actions">
+                                            <button class="btn btn-secondary" onclick="backToStep(1)">
+                                                <i class="fas fa-arrow-left"></i>
+                                                返回修改
+                                            </button>
+                                            <button class="btn btn-primary" onclick="proceedToOutline()">
+                                                <i class="fas fa-arrow-right"></i>
+                                                确认信息，生成目录
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 步骤3: 目录生成与调整 -->
+                            <div class="generation-step" id="step-3" data-step="3">
+                                <div class="step-header">
+                                    <div class="step-indicator">
+                                        <span class="step-number">3</span>
+                                        <div class="step-status">
+                                            <i class="fas fa-list-ul"></i>
+                                            <span>目录调整</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="step-content">
+                                    <div class="outline-section">
+                                        <p class="section-description">根据您的需求，AI生成了以下方案目录结构，您可以调整：</p>
+                                        
+                                        <div class="outline-editor" id="outline-editor">
+                                            <!-- 动态生成的目录结构 -->
+                                        </div>
+                                        
+                                        <div class="outline-actions">
+                                            <button class="btn btn-secondary" onclick="backToStep(2)">
+                                                <i class="fas fa-arrow-left"></i>
+                                                返回上一步
+                                            </button>
+                                            <button class="btn btn-success btn-lg" onclick="startSmartGeneration()">
+                                                <i class="fas fa-rocket"></i>
+                                                开始智能生成
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 步骤4: 生成过程 -->
+                            <div class="generation-step" id="step-4" data-step="4">
+                                <div class="step-header">
+                                    <div class="step-indicator">
+                                        <span class="step-number">4</span>
+                                        <div class="step-status">
+                                            <i class="fas fa-cogs"></i>
+                                            <span>智能生成中</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="step-content">
+                                    <div class="generation-monitor">
+                                        <div class="progress-info">
+                                            <h4>生成进度</h4>
+                                            <div class="progress-bar-container">
+                                                <div class="progress-bar">
+                                                    <div class="progress-fill" id="generation-progress-fill" style="width: 0%"></div>
+                                                </div>
+                                                <span class="progress-text" id="generation-progress-text">0%</span>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="current-module" id="current-module">
+                                            <div class="module-indicator">
+                                                <div class="pulse-dot"></div>
+                                                <span id="current-module-name">准备中...</span>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="generation-stats">
+                                            <div class="stat-item">
+                                                <span class="stat-label">已完成模块</span>
+                                                <span class="stat-value" id="completed-modules">0</span>
+                                            </div>
+                                            <div class="stat-item">
+                                                <span class="stat-label">总模块数</span>
+                                                <span class="stat-value" id="total-modules">10</span>
+                                            </div>
+                                            <div class="stat-item">
+                                                <span class="stat-label">生成字数</span>
+                                                <span class="stat-value" id="generated-chars">0</span>
+                                            </div>
+                                            <div class="stat-item">
+                                                <span class="stat-label">质量评分</span>
+                                                <span class="stat-value" id="quality-score">--</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 生成设置面板 -->
+                            <div class="generation-settings">
+                                <div class="settings-header" onclick="toggleSettings()">
+                                    <i class="fas fa-cog"></i>
+                                    <span>高级设置</span>
+                                    <i class="fas fa-chevron-down settings-chevron"></i>
+                                </div>
+                                <div class="settings-content" id="generation-settings-content">
+                                    <div class="setting-item">
+                                        <label>
+                                            <input type="checkbox" id="smart-include-literature" checked>
+                                            <span>包含文献检索增强</span>
+                                        </label>
+                                    </div>
+                                    <div class="setting-item">
+                                        <label>
+                                            <input type="checkbox" id="smart-include-quality" checked>
+                                            <span>执行质量检查</span>
+                                        </label>
+                                    </div>
+                                    <div class="setting-item">
+                                        <label for="smart-detail-level">详细程度</label>
+                                        <div class="slider-container">
+                                            <input type="range" id="smart-detail-level" min="0" max="100" value="70" class="smart-slider">
+                                            <span class="slider-value" id="detail-level-value">70%</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 右侧实时显示区域 -->
+                        <div class="right-panel">
+                            <div class="live-content-display">
+                                <div class="display-header">
+                                    <h3>
+                                        <i class="fas fa-eye"></i>
+                                        实时生成内容
+                                    </h3>
+                                    <div class="display-controls">
+                                        <button class="control-btn" onclick="toggleAutoScroll()" title="自动滚动">
+                                            <i class="fas fa-arrows-alt-v" id="scroll-icon"></i>
+                                        </button>
+                                        <button class="control-btn" onclick="toggleFullscreen()" title="全屏显示">
+                                            <i class="fas fa-expand"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <div class="content-container" id="live-content-container">
+                                    <div class="welcome-message">
+                                        <div class="welcome-icon">
+                                            <i class="fas fa-lightbulb"></i>
+                                        </div>
+                                        <h4>智能方案生成助手</h4>
+                                        <p>请在左侧输入您的研究需求，我将智能提取关键信息并生成专业的临床试验方案</p>
+                                        <div class="features-preview">
+                                            <div class="feature-item">
+                                                <i class="fas fa-brain"></i>
+                                                <span>智能信息提取</span>
+                                            </div>
+                                            <div class="feature-item">
+                                                <i class="fas fa-list-check"></i>
+                                                <span>可调整目录结构</span>
+                                            </div>
+                                            <div class="feature-item">
+                                                <i class="fas fa-bolt"></i>
+                                                <span>实时内容生成</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 动态生成的内容将在这里显示 -->
+                                </div>
+                                
+                                <div class="content-footer" id="content-footer" style="display: none;">
+                                    <div class="generation-summary">
+                                        <div class="summary-stats">
+                                            <span class="summary-item">
+                                                <i class="fas fa-check-circle text-success"></i>
+                                                生成完成
+                                            </span>
+                                            <span class="summary-item">
+                                                <i class="fas fa-star text-warning"></i>
+                                                质量评分: <span id="final-score">--</span>
+                                            </span>
+                                            <span class="summary-item">
+                                                <i class="fas fa-file-alt"></i>
+                                                总字数: <span id="total-words">--</span>
+                                            </span>
+                                        </div>
+                                        <div class="export-actions">
+                                            <button class="btn btn-primary" onclick="exportProtocol('docx')">
+                                                <i class="fas fa-file-word"></i>
+                                                导出Word
+                                            </button>
+                                            <button class="btn btn-secondary" onclick="exportProtocol('pdf')">
+                                                <i class="fas fa-file-pdf"></i>
+                                                导出PDF
+                                            </button>
+                                            <button class="btn btn-info" onclick="copyProtocolContent()">
+                                                <i class="fas fa-copy"></i>
+                                                复制全文
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Process Visualization Tab -->
+            <div id="process" class="tab-content">
+                <div class="process-section">
+                    <h2><i class="fas fa-project-diagram"></i> 流程可视化</h2>
+                    
+                    <div class="process-tabs">
+                        <button class="process-tab-btn active" data-process-tab="workflow">工作流程</button>
+                        <button class="process-tab-btn" data-process-tab="architecture">系统架构</button>
+                        <button class="process-tab-btn" data-process-tab="modules">模块关系</button>
+                    </div>
+
+                    <!-- Workflow Diagram -->
+                    <div id="workflow" class="process-tab-content active">
+                        <h3>系统工作流程</h3>
+                        <div class="mermaid" id="workflow-diagram">
+                            graph TD
+                                A[用户输入需求] --> B[AI智能解析]
+                                B --> C[信息提取]
+                                C --> D[知识库检索]
+                                D --> E[内容增强]
+                                E --> F[分模块生成]
+                                F --> G[质量检查]
+                                G --> H[格式化输出]
+                                
+                                D --> D1[临床试验方案]
+                                D --> D2[医学指南]
+                                D --> D3[文献资料]
+                                D --> D4[用户文档]
+                                
+                                F --> F1[研究背景]
+                                F --> F2[研究设计]
+                                F --> F3[研究人群]
+                                F --> F4[给药方案]
+                                F --> F5[安全评估]
+                                F --> F6[统计分析]
+                        </div>
+                    </div>
+
+                    <!-- Architecture Diagram -->
+                    <div id="architecture" class="process-tab-content">
+                        <h3>系统技术架构</h3>
+                        <div class="mermaid" id="architecture-diagram">
+                            graph TB
+                                subgraph "前端层"
+                                    A1[Web界面]
+                                    A2[智能生成模块]
+                                    A3[文件管理]
+                                    A4[实时显示]
+                                end
+                                
+                                subgraph "API层"
+                                    B1[FastAPI服务]
+                                    B2[流式生成API]
+                                    B3[知识库API]
+                                    B4[质量控制API]
+                                end
+                                
+                                subgraph "核心层"
+                                    C1[LLM调用]
+                                    C2[向量检索]
+                                    C3[内容生成]
+                                    C4[质量评估]
+                                end
+                                
+                                subgraph "数据层"
+                                    D1[向量数据库]
+                                    D2[文件存储]
+                                    D3[配置管理]
+                                end
+                                
+                                A1 --> B1
+                                B1 --> C1
+                                C1 --> D1
+                        </div>
+                    </div>
+
+                    <!-- Modules Diagram -->
+                    <div id="modules" class="process-tab-content">
+                        <h3>方案生成模块关系</h3>
+                        <div class="mermaid" id="modules-diagram">
+                            graph LR
+                                subgraph "输入处理"
+                                    A1[需求文本]
+                                    A2[信息提取]
+                                    A3[关键词识别]
+                                end
+                                
+                                subgraph "知识增强"
+                                    B1[向量检索]
+                                    B2[相似度匹配]
+                                    B3[内容融合]
+                                end
+                                
+                                subgraph "内容生成"
+                                    C1[研究背景]
+                                    C2[研究设计]
+                                    C3[其他模块]
+                                end
+                                
+                                A1 --> A2
+                                A2 --> A3
+                                A3 --> B1
+                                B1 --> B2
+                                B2 --> B3
+                                B3 --> C1
+                                C1 --> C2
+                                C2 --> C3
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="loading-overlay">
+            <div class="loading-spinner">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p id="loading-text">处理中...</p>
+            </div>
+        </div>
+
+        <!-- Toast Messages -->
+        <div id="toast-container" class="toast-container"></div>
+
+        <!-- File Details Modal -->
+        <div id="file-details-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="file-details-title">
+                        <i class="fas fa-file-alt"></i> 文件详情
+                    </h2>
+                    <button class="close-btn" onclick="closeFileDetailsModal()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <div class="modal-body">
+                    <div class="modal-tabs">
+                        <button class="modal-tab-btn active" data-tab="overview" onclick="switchModalTab('overview')">
+                            <i class="fas fa-info-circle"></i> 概览
+                        </button>
+                        <button class="modal-tab-btn" data-tab="content" onclick="switchModalTab('content')">
+                            <i class="fas fa-file-text"></i> 原始内容
+                        </button>
+                        <button class="modal-tab-btn" data-tab="chunks" onclick="switchModalTab('chunks')">
+                            <i class="fas fa-cube"></i> Embedding分块
+                        </button>
+                    </div>
+                    
+                    <div class="modal-tab-content">
+                        <!-- 概览标签页 -->
+                        <div id="overview" class="tab-panel active">
+                            <div class="overview-grid">
+                                <div class="overview-card">
+                                    <h3><i class="fas fa-info-circle"></i> 文件信息</h3>
+                                    <div id="file-info-content" class="info-grid">
+                                        <!-- 文件基本信息将在这里动态加载 -->
+                                    </div>
+                                </div>
+                                <div class="overview-card">
+                                    <h3><i class="fas fa-vector-square"></i> Embedding统计</h3>
+                                    <div id="embedding-info-content" class="info-grid">
+                                        <!-- Embedding信息将在这里动态加载 -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 原始内容标签页 -->
+                        <div id="content" class="tab-panel">
+                            <div id="original-content-container">
+                                <!-- 原始文件内容将在这里动态加载 -->
+                            </div>
+                        </div>
+                        
+                        <!-- Embedding分块标签页 -->
+                        <div id="chunks" class="tab-panel">
+                            <div id="chunks-content-container">
+                                <!-- Embedding分块内容将在这里动态加载 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

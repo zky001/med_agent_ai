@@ -1,0 +1,2150 @@
+// 全局变量
+const API_BASE_URL = 'http://localhost:8000';
+let currentConfig = {
+    llm: {
+        type: 'local',
+        url: 'http://192.168.22.191:8000/v1',
+        model: '/home/aiteam/.cache/modelscope/hub/models/google/medgemma-27b-text-it/',
+        key: 'EMPTY',
+        temperature: 0.3
+    },
+    embedding: {
+        type: 'local-api',
+        url: 'http://192.168.22.191:8000/v1',
+        key: 'EMPTY',
+        model: 'auto',
+        dimension: 4096
+    }
+};
+
+let charts = {};
+let currentFiles = [];
+let generationInProgress = false;
+
+// HTML转义函数，防止XSS攻击
+function escapeHtml(text) {
+    // 确保输入是字符串
+    if (typeof text !== 'string') {
+        text = String(text || '');
+    }
+    
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+}
+
+// 调试函数：检查页面元素
+function debugCheckElements() {
+    console.log('=== 页面元素检查 ===');
+    
+    // 检查嵌入模型相关元素
+    const embedElements = {
+        'embed-type': document.getElementById('embed-type'),
+        'embed-url-group': document.getElementById('embed-url-group'),
+        'embed-key-group': document.getElementById('embed-key-group'),
+        'embed-url': document.getElementById('embed-url'),
+        'embed-key': document.getElementById('embed-key'),
+        'embed-model': document.getElementById('embed-model'),
+        'embed-dim': document.getElementById('embed-dim')
+    };
+    
+    console.log('嵌入模型元素:', embedElements);
+    
+    // 检查文件上传相关元素
+    const fileElements = {
+        'drag-drop-area': document.getElementById('drag-drop-area'),
+        'file-input': document.getElementById('file-input')
+    };
+    
+    console.log('文件上传元素:', fileElements);
+    
+    // 检查配置标签页
+    const configTab = document.getElementById('config');
+    console.log('配置标签页:', configTab);
+    
+    if (configTab) {
+        console.log('配置标签页是否可见:', !configTab.classList.contains('active') ? '隐藏' : '显示');
+    }
+    
+    console.log('=== 检查完成 ===');
+}
+
+// 页面初始化
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('页面开始初始化...');
+    
+    // 延迟执行调试检查，确保所有DOM都已加载
+    setTimeout(() => {
+        debugCheckElements();
+    }, 100);
+      initializeInterface();
+    loadConfiguration();
+    checkSystemStatus();
+    initializeCharts();
+    setupEventListeners();
+    initializeMermaid();
+    initializeChat();
+    initializeModalEventListeners(); // 初始化模态框事件监听器
+    
+    // 多次尝试初始化嵌入模型配置显示，确保配置正确应用
+    setTimeout(() => {
+        console.log('第一次更新嵌入模型配置显示...');
+        applyConfigurationToUI();
+    }, 200);
+    
+    setTimeout(() => {
+        console.log('第二次强制更新嵌入模型配置显示...');
+        toggleEmbeddingConfigDisplay();
+    }, 500);
+    
+    setTimeout(() => {
+        console.log('第三次确认嵌入模型配置显示...');
+        toggleEmbeddingConfigDisplay();
+    }, 1000);
+});
+
+// 初始化界面
+function initializeInterface() {
+    console.log('初始化界面...');
+    
+    // 设置标签页切换
+    const navButtons = document.querySelectorAll('.nav-btn');
+    navButtons.forEach(btn => {
+        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+
+    // 设置流程可视化标签页
+    const processTabButtons = document.querySelectorAll('.process-tab-btn');
+    processTabButtons.forEach(btn => {
+        btn.addEventListener('click', () => switchProcessTab(btn.dataset.processTab));
+    });
+
+    // 设置温度范围滑块
+    const tempSlider = document.getElementById('llm-temp');
+    const tempValue = document.getElementById('temp-value');
+    if (tempSlider && tempValue) {
+        tempSlider.addEventListener('input', function() {
+            tempValue.textContent = this.value;
+            currentConfig.llm.temperature = parseFloat(this.value);
+        });
+    }
+}
+
+// 标签页切换
+function switchTab(tabName) {
+    console.log('切换到标签页:', tabName);
+    
+    // 隐藏所有标签页内容
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // 移除所有导航按钮的激活状态
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // 显示选中的标签页
+    const targetTab = document.getElementById(tabName);
+    const targetBtn = document.querySelector(`[data-tab="${tabName}"]`);
+    
+    if (targetTab) targetTab.classList.add('active');
+    if (targetBtn) targetBtn.classList.add('active');
+    
+    // 根据标签页执行特定初始化
+    switch(tabName) {
+        case 'home':
+            checkSystemStatus();
+            break;
+        case 'config':
+            // 确保配置页面正确显示
+            setTimeout(() => {
+                toggleEmbeddingConfigDisplay();
+            }, 100);
+            break;
+        case 'upload':
+            // 重新设置文件上传事件监听器
+            setupFileUploadListeners();
+            loadKnowledgeStats();
+            loadFileList();
+            break;
+        case 'process':
+            renderProcessCharts();
+            break;
+        case 'chat':
+            updateCurrentModelDisplay();
+            // checkChatConnection();
+            break;
+        default:
+            break;
+    }
+}
+
+// 流程可视化标签页切换
+function switchProcessTab(tabName) {
+    document.querySelectorAll('.process-tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    document.querySelectorAll('.process-tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    document.getElementById(tabName).classList.add('active');
+    document.querySelector(`[data-process-tab="${tabName}"]`).classList.add('active');
+}
+
+// 初始化Mermaid图表
+function initializeMermaid() {
+    if (typeof mermaid !== 'undefined') {
+        mermaid.initialize({ 
+            startOnLoad: true,
+            theme: 'default',
+            themeVariables: {
+                primaryColor: '#2563eb',
+                primaryTextColor: '#1e293b',
+                primaryBorderColor: '#e2e8f0',
+                lineColor: '#64748b',
+                secondaryColor: '#f8fafc',
+                tertiaryColor: '#f1f5f9'
+            }
+        });
+    }
+}
+
+// 切换嵌入模型配置显示
+function toggleEmbeddingConfigDisplay() {
+    console.log('切换嵌入模型配置显示...');
+    
+    const embedType = document.getElementById('embed-type');
+    const urlGroup = document.getElementById('embed-url-group');
+    const keyGroup = document.getElementById('embed-key-group');
+    
+    if (!embedType || !urlGroup || !keyGroup) {
+        console.error('嵌入模型配置元素未找到');
+        return;
+    }
+    
+    const selectedType = embedType.value;
+    console.log('当前嵌入模型类型:', selectedType);
+    
+    if (selectedType === 'openai' || selectedType === 'local-api') {
+        console.log('显示API配置字段');
+        urlGroup.style.display = 'block';
+        keyGroup.style.display = 'block';
+        
+        // 更新模型名称提示
+        const modelInput = document.getElementById('embed-model');
+        if (modelInput) {
+            if (selectedType === 'openai') {
+                modelInput.placeholder = '例如: text-embedding-ada-002';
+                if (modelInput.value === 'auto' || modelInput.value === 'all-MiniLM-L6-v2') {
+                    modelInput.value = 'text-embedding-ada-002';
+                }
+            } else if (selectedType === 'local-api') {
+                modelInput.placeholder = '输入auto自动获取，或指定模型名称';
+                if (modelInput.value === 'text-embedding-ada-002' || modelInput.value === 'all-MiniLM-L6-v2') {
+                    modelInput.value = 'auto';
+                }
+            }
+        }
+    } else {
+        console.log('隐藏API配置字段');
+        urlGroup.style.display = 'none';
+        keyGroup.style.display = 'none';
+        
+        // SentenceTransformers模型
+        const modelInput = document.getElementById('embed-model');
+        if (modelInput) {
+            modelInput.placeholder = '例如: all-MiniLM-L6-v2';
+            if (modelInput.value === 'text-embedding-ada-002' || modelInput.value === 'auto') {
+                modelInput.value = 'all-MiniLM-L6-v2';
+            }
+        }
+    }
+}
+
+// 专门设置文件上传事件监听器
+function setupFileUploadListeners() {
+    console.log('=== 设置文件上传事件监听器 ===');
+    
+    const dragDropArea = document.getElementById('drag-drop-area');
+    const fileInput = document.getElementById('file-input');
+
+    console.log('文件上传元素检查:', { 
+        dragDropArea: !!dragDropArea, 
+        fileInput: !!fileInput,
+        dragDropAreaVisible: dragDropArea ? dragDropArea.offsetParent !== null : false,
+        fileInputVisible: fileInput ? fileInput.offsetParent !== null : false
+    });
+
+    if (!dragDropArea || !fileInput) {
+        console.error('❌ 文件上传元素未找到!', { dragDropArea, fileInput });
+        return;
+    }
+
+    // 移除可能存在的旧事件监听器
+    const newDragDropArea = dragDropArea.cloneNode(true);
+    const newFileInput = newDragDropArea.querySelector('#file-input');
+    dragDropArea.parentNode.replaceChild(newDragDropArea, dragDropArea);
+
+    console.log('✅ 开始绑定文件上传事件监听器...');
+
+    // 拖拽事件
+    newDragDropArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        newDragDropArea.classList.add('dragover');
+        console.log('🔄 文件拖拽悬停');
+    });
+
+    newDragDropArea.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        if (!newDragDropArea.contains(e.relatedTarget)) {
+            newDragDropArea.classList.remove('dragover');
+            console.log('🔄 文件拖拽离开');
+        }
+    });
+
+    newDragDropArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        newDragDropArea.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        console.log('=== 🎯 文件拖拽放下事件触发 ===');
+        console.log('拖拽文件数量:', files.length);
+        if (files.length > 0) {
+            for (let i = 0; i < files.length; i++) {
+                console.log(`拖拽文件 ${i + 1}: ${files[i].name} (${files[i].size} bytes)`);
+            }
+            handleFileSelect(files);
+            showToast(`✅ 通过拖拽选择了 ${files.length} 个文件，请点击"开始上传"进行上传`, 'success');
+            
+            // 滚动到上传按钮并高亮
+            const uploadBtn = document.querySelector('.upload-card .btn-primary');
+            if (uploadBtn) {
+                uploadBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                uploadBtn.style.animation = 'pulse 0.6s ease-in-out 3';
+            }
+        } else {
+            console.log('拖拽区域没有检测到有效文件');
+            showToast('没有检测到有效文件', 'warning');
+        }
+    });
+
+    // 点击事件
+    newDragDropArea.addEventListener('click', (e) => {
+        console.log('🖱️ 点击文件上传区域');
+        if (e.target !== newFileInput) {
+            newFileInput.click();
+        }
+    });
+
+    // 文件选择事件
+    newFileInput.addEventListener('change', (e) => {
+        const files = e.target.files;
+        console.log('=== 🎯 文件选择事件触发 ===');
+        console.log('选择的文件数量:', files.length);
+        if (files.length > 0) {
+            for (let i = 0; i < files.length; i++) {
+                console.log(`文件 ${i + 1}: ${files[i].name} (${files[i].size} bytes)`);
+            }
+            handleFileSelect(files);
+            showToast(`✅ 已选择 ${files.length} 个文件，请点击"开始上传"进行上传`, 'success');
+            
+            // 滚动到上传按钮
+            const uploadBtn = document.querySelector('.upload-card .btn-primary');
+            if (uploadBtn) {
+                uploadBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                uploadBtn.style.animation = 'pulse 0.6s ease-in-out 3';
+            }
+        } else {
+            console.log('没有选择任何文件');
+            showToast('没有选择任何文件', 'warning');
+        }
+    });
+
+    console.log('✅ 文件上传事件监听器绑定完成');
+}
+
+// 事件监听器设置
+function setupEventListeners() {
+    console.log('设置事件监听器...');
+    
+    // 配置表单监听
+    const llmTypeSelect = document.getElementById('llm-type');
+    const llmUrlInput = document.getElementById('llm-url');
+    const llmModelInput = document.getElementById('llm-model');
+    const llmKeyInput = document.getElementById('llm-key');
+    
+    if (llmTypeSelect) llmTypeSelect.addEventListener('change', updateLLMConfig);
+    if (llmUrlInput) llmUrlInput.addEventListener('input', updateLLMConfig);
+    if (llmModelInput) llmModelInput.addEventListener('input', updateLLMConfig);
+    if (llmKeyInput) llmKeyInput.addEventListener('input', updateLLMConfig);
+    
+    const embedTypeSelect = document.getElementById('embed-type');
+    const embedUrlInput = document.getElementById('embed-url');
+    const embedKeyInput = document.getElementById('embed-key');
+    const embedModelInput = document.getElementById('embed-model');
+    const embedDimInput = document.getElementById('embed-dim');
+    
+    console.log('设置嵌入模型监听器...', { embedTypeSelect: !!embedTypeSelect });
+    
+    if (embedTypeSelect) {
+        embedTypeSelect.addEventListener('change', function() {
+            console.log('嵌入模型类型改变:', this.value);
+            toggleEmbeddingConfigDisplay();
+            updateEmbeddingConfig();
+        });
+    }
+    if (embedUrlInput) embedUrlInput.addEventListener('input', updateEmbeddingConfig);
+    if (embedKeyInput) embedKeyInput.addEventListener('input', updateEmbeddingConfig);
+    if (embedModelInput) embedModelInput.addEventListener('input', updateEmbeddingConfig);
+    if (embedDimInput) embedDimInput.addEventListener('input', updateEmbeddingConfig);
+}
+
+// 系统状态检查
+async function checkSystemStatus() {
+    try {
+        // 检查API服务
+        const apiStatus = await fetch(`${API_BASE_URL}/health`);
+        updateStatusIndicator('api-status', apiStatus.ok, 'API服务');
+
+        // 检查系统状态
+        const systemStatus = await fetch(`${API_BASE_URL}/status`);
+        if (systemStatus.ok) {
+            const data = await systemStatus.json();
+            updateStatusIndicator('llm-status', true, '本地模型');
+            
+            // 获取知识库统计
+            const kbStats = await fetch(`${API_BASE_URL}/knowledge/stats`);
+            if (kbStats.ok) {
+                const kbData = await kbStats.json();
+                updateStatusIndicator('kb-status', true, '知识库');
+                
+                // 计算总文档数
+                const totalDocs = Object.values(kbData.stats || {})
+                    .reduce((sum, stat) => sum + (stat.document_count || 0), 0);
+                document.getElementById('doc-count').textContent = totalDocs;
+            }
+        }
+    } catch (error) {
+        console.error('系统状态检查失败:', error);
+        updateStatusIndicator('api-status', false, 'API服务');
+        updateStatusIndicator('llm-status', false, 'LLM模型');
+        updateStatusIndicator('kb-status', false, '知识库');
+    }
+}
+
+// 更新状态指示器
+function updateStatusIndicator(elementId, isOnline, label) {
+    const element = document.getElementById(elementId);
+    element.textContent = isOnline ? '在线' : '离线';
+    element.className = `status-value ${isOnline ? 'online' : 'offline'}`;
+}
+
+// 配置管理
+function loadConfiguration() {
+    const savedConfig = localStorage.getItem('medicalAiConfig');
+    if (savedConfig) {
+        currentConfig = JSON.parse(savedConfig);
+        applyConfigurationToUI();
+    }
+}
+
+function applyConfigurationToUI() {
+    document.getElementById('llm-type').value = currentConfig.llm.type;
+    document.getElementById('llm-url').value = currentConfig.llm.url;
+    document.getElementById('llm-model').value = currentConfig.llm.model;
+    document.getElementById('llm-key').value = currentConfig.llm.key;
+    document.getElementById('llm-temp').value = currentConfig.llm.temperature;
+    document.getElementById('temp-value').textContent = currentConfig.llm.temperature;
+    
+    document.getElementById('embed-type').value = currentConfig.embedding.type;
+    document.getElementById('embed-url').value = currentConfig.embedding.url;
+    document.getElementById('embed-key').value = currentConfig.embedding.key;
+    document.getElementById('embed-model').value = currentConfig.embedding.model;
+    document.getElementById('embed-dim').value = currentConfig.embedding.dimension;
+    
+    // 更新嵌入模型配置显示
+    toggleEmbeddingConfigDisplay();
+}
+
+function updateLLMConfig() {
+    currentConfig.llm = {
+        type: document.getElementById('llm-type').value,
+        url: document.getElementById('llm-url').value,
+        model: document.getElementById('llm-model').value,
+        key: document.getElementById('llm-key').value,
+        temperature: parseFloat(document.getElementById('llm-temp').value)
+    };
+    saveConfiguration();
+}
+
+function updateEmbeddingConfig() {
+    currentConfig.embedding = {
+        type: document.getElementById('embed-type').value,
+        url: document.getElementById('embed-url').value,
+        key: document.getElementById('embed-key').value,
+        model: document.getElementById('embed-model').value,
+        dimension: parseInt(document.getElementById('embed-dim').value)
+    };
+    saveConfiguration();
+}
+
+function saveConfiguration() {
+    localStorage.setItem('medicalAiConfig', JSON.stringify(currentConfig));
+    
+    // 实时更新后端配置
+    updateBackendConfiguration();
+    
+    showToast('配置已保存并生效', 'success');
+}
+
+// 实时更新后端配置
+async function updateBackendConfiguration() {
+    try {
+        const formData = new FormData();
+        formData.append('llm_type', currentConfig.llm.type);
+        formData.append('llm_url', currentConfig.llm.url);
+        formData.append('llm_model', currentConfig.llm.model);
+        formData.append('llm_key', currentConfig.llm.key);
+        formData.append('llm_temperature', currentConfig.llm.temperature);
+        formData.append('embed_type', currentConfig.embedding.type);
+        formData.append('embed_url', currentConfig.embedding.url);
+        formData.append('embed_key', currentConfig.embedding.key);
+        formData.append('embed_model', currentConfig.embedding.model);
+        formData.append('embed_dimension', currentConfig.embedding.dimension);
+
+        const response = await fetch(`${API_BASE_URL}/config/update`, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            console.log('后端配置更新成功:', result);
+        } else {
+            console.error('后端配置更新失败');
+        }
+    } catch (error) {
+        console.error('后端配置更新错误:', error);
+    }
+}
+
+function resetConfiguration() {
+    currentConfig = {
+        llm: {
+            type: 'local',
+            url: 'http://192.168.22.191:8000/v1',
+            model: '/home/aiteam/.cache/modelscope/hub/models/google/medgemma-27b-text-it/',
+            key: 'EMPTY',
+            temperature: 0.3
+        },
+        embedding: {
+            type: 'local-api',
+            url: 'http://192.168.22.191:8000/v1',
+            key: 'EMPTY',
+            model: 'auto',
+            dimension: 4096
+        }
+    };
+    applyConfigurationToUI();
+    saveConfiguration();
+    showToast('配置已重置', 'info');
+}
+
+function exportConfiguration() {
+    const configBlob = new Blob([JSON.stringify(currentConfig, null, 2)], {
+        type: 'application/json'
+    });
+    const url = URL.createObjectURL(configBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'medical-ai-config.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('配置文件已导出', 'success');
+}
+
+// LLM连接测试
+async function testLLMConnection() {
+    showLoading('测试LLM连接中...');
+    try {
+        const response = await fetch(`${API_BASE_URL}/test/llm`, {
+            method: 'POST'
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast('LLM连接测试成功: ' + result.response, 'success');
+        } else {
+            showToast('LLM连接测试失败: ' + result.message, 'error');
+        }
+    } catch (error) {
+        showToast('LLM连接测试失败: ' + error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+// 嵌入模型测试
+async function testEmbeddingModel() {
+    showLoading('测试嵌入模型中...');
+    try {
+        const response = await fetch(`${API_BASE_URL}/test/embedding`, {
+            method: 'POST'
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast(`嵌入模型测试成功，维度: ${result.dimension}`, 'success');
+        } else {
+            showToast('嵌入模型测试失败: ' + result.message, 'error');
+        }
+    } catch (error) {
+        showToast('嵌入模型测试失败: ' + error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+// 文件处理
+function handleFileSelect(files) {
+    console.log('=== 🎯 handleFileSelect函数被调用 ===');
+    console.log('传入的files参数:', files);
+    console.log('files是否为空:', !files);
+    console.log('files.length:', files ? files.length : 'undefined');
+    
+    if (!files || files.length === 0) {
+        console.error('❌ 没有有效的文件传入');
+        currentFiles = [];
+        updateFilePreview();
+        return;
+    }
+    
+    currentFiles = Array.from(files);
+    console.log('✅ currentFiles已设置:', currentFiles);
+    console.log('✅ currentFiles.length:', currentFiles.length);
+    
+    // 显示每个文件的详细信息
+    currentFiles.forEach((file, index) => {
+        console.log(`文件 ${index + 1}:`, {
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            lastModified: new Date(file.lastModified).toLocaleString()
+        });
+    });
+    
+    updateFilePreview();
+    console.log('✅ handleFileSelect执行完成');
+}
+
+function updateFilePreview() {
+    const dragDropArea = document.getElementById('drag-drop-area');
+    const preview = dragDropArea.querySelector('p');
+    
+    if (currentFiles.length > 0) {        const fileNames = currentFiles.map(f => escapeHtml(f.name)).join(', ');
+        preview.innerHTML = `已选择 ${currentFiles.length} 个文件:<br><small style="color: #666;">${fileNames}</small>`;
+        
+        // 更改拖拽区域样式表示文件已选择
+        dragDropArea.style.borderColor = '#10b981';
+        dragDropArea.style.backgroundColor = 'rgba(16, 185, 129, 0.05)';
+    } else {
+        preview.innerHTML = '拖拽文件到此处或点击选择文件<br><span class="upload-hint">支持 Excel, CSV, PDF, Word, 文本文件</span>';
+        dragDropArea.style.borderColor = '';
+        dragDropArea.style.backgroundColor = '';
+    }
+}
+
+// 文件上传
+async function uploadFiles() {
+    console.log('=== 🚀 uploadFiles函数被调用 ===');
+    console.log('当前currentFiles状态:', currentFiles);
+    console.log('currentFiles.length:', currentFiles.length);
+    console.log('currentFiles是否为数组:', Array.isArray(currentFiles));
+    
+    if (currentFiles.length === 0) {
+        console.error('❌ currentFiles为空，无法上传');
+        showToast('请先选择文件', 'warning');
+        return;
+    }
+
+    const knowledgeType = document.getElementById('kb-type').value;
+    const uploadBtn = document.querySelector('.upload-card .btn-primary');
+    
+    // 禁用上传按钮并显示进度
+    uploadBtn.disabled = true;
+    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 正在上传...';
+    
+    showLoading(`正在上传 ${currentFiles.length} 个文件...`);
+
+    try {
+        let successCount = 0;
+        let errorCount = 0;
+        
+        for (let i = 0; i < currentFiles.length; i++) {
+            const file = currentFiles[i];
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('knowledge_type', knowledgeType);
+            formData.append('title', file.name.split('.')[0]);
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/knowledge/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    successCount++;
+                    
+                    // 显示详细的上传结果信息
+                    const processingInfo = result.processing_info || {};
+                    const embeddingSample = result.embeddings_sample || [];
+                    
+                    let uploadMessage = `文件 ${file.name} 上传成功：
+• 添加了 ${result.records_added} 条embedding记录
+• 处理了 ${result.chunks_count || 'N/A'} 个文本块`;
+                    
+                    if (processingInfo.embedding_applied) {
+                        uploadMessage += `
+• 向量化模型: ${processingInfo.embedding_model || 'N/A'}
+• 成功率: ${processingInfo.success_rate || 'N/A'}`;
+                        
+                        if (embeddingSample.length > 0) {
+                            uploadMessage += `
+• 向量维度: ${embeddingSample[0].embedding_dimension || 'N/A'}`;
+                        }
+                        
+                        if (processingInfo.embedding_failures > 0) {
+                            uploadMessage += `
+• 失败数: ${processingInfo.embedding_failures}`;
+                        }
+                    }
+                    
+                    showToast(uploadMessage, 'success');
+                } else {
+                    errorCount++;
+                    showToast(`文件 ${file.name} 上传失败: ${result.message || '未知错误'}`, 'error');
+                }
+            } catch (fileError) {
+                errorCount++;
+                showToast(`文件 ${file.name} 上传失败: ${fileError.message}`, 'error');
+            }
+        }
+
+        // 显示总体结果
+        if (successCount > 0) {
+            showToast(`成功上传 ${successCount} 个文件`, 'success');
+            
+            // 清空文件选择
+            currentFiles = [];
+            document.getElementById('file-input').value = '';
+            updateFilePreview();
+            
+            // 刷新统计和文件列表
+            loadKnowledgeStats();
+            loadFileList();
+        }
+        
+        if (errorCount > 0) {
+            showToast(`${errorCount} 个文件上传失败`, 'warning');
+        }
+        
+    } catch (error) {
+        showToast('文件上传失败: ' + error.message, 'error');
+    } finally {
+        hideLoading();
+        
+        // 恢复上传按钮
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = '<i class="fas fa-upload"></i> 开始上传';
+    }
+}
+
+// 知识库统计
+async function loadKnowledgeStats() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/knowledge/stats`);
+        if (response.ok) {
+            const data = await response.json();
+            updateKnowledgeStatsChart(data.stats);
+            updateStatsDetails(data.stats);
+        }
+    } catch (error) {
+        console.error('加载知识库统计失败:', error);
+    }
+}
+
+function updateKnowledgeStatsChart(stats) {
+    const ctx = document.getElementById('kb-stats-chart');
+    if (!ctx) return;
+
+    const labels = Object.keys(stats);
+    const data = Object.values(stats).map(stat => stat.document_count || 0);
+
+    if (charts.kbStats) {
+        charts.kbStats.destroy();
+    }
+
+    charts.kbStats = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: [
+                    '#2563eb', '#10b981', '#f59e0b', '#ef4444',
+                    '#06b6d4', '#8b5cf6', '#f97316', '#84cc16'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+}
+
+function updateStatsDetails(stats) {
+    const container = document.getElementById('stats-details');
+    if (!container) return;
+
+    const total = Object.values(stats).reduce((sum, stat) => sum + (stat.document_count || 0), 0);
+    
+    container.innerHTML = `
+        <div style="margin-top: 1rem;">
+            <strong>总文档数: ${total}</strong>
+            ${Object.entries(stats).map(([type, stat]) => 
+                `<div style="display: flex; justify-content: space-between; margin-top: 0.5rem;">
+                    <span>${type}:</span>
+                    <span>${stat.document_count || 0} 条</span>
+                </div>`
+            ).join('')}
+        </div>
+    `;
+}
+
+// 文件列表
+async function loadFileList() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/knowledge/files`);
+        if (response.ok) {
+            const data = await response.json();
+            updateFileList(data.files);
+        }
+    } catch (error) {
+        console.error('加载文件列表失败:', error);
+    }
+}
+
+function updateFileList(files) {
+    const container = document.getElementById('file-list');
+    if (!container) return;
+
+    if (files.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: #64748b;">暂无已上传的文件</p>';
+        return;
+    }
+
+    container.innerHTML = files.map(file => `
+        <div class="file-item">
+            <div class="file-info">
+                <i class="file-icon fas fa-file"></i>
+                <div class="file-details">
+                    <h4><a href="#" class="file-name" onclick="viewFileDetails('${file.filename}')">${file.filename}</a></h4>
+                    <p>${formatFileSize(file.size)} • ${formatDate(file.modified)}</p>
+                </div>
+            </div>
+            <button class="btn btn-danger" onclick="deleteFile('${file.filename}')">
+                <i class="fas fa-trash"></i> 删除
+            </button>
+        </div>
+    `).join('');
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function formatDate(timestamp) {
+    return new Date(timestamp * 1000).toLocaleDateString('zh-CN');
+}
+
+// 删除文件
+async function deleteFile(filename) {
+    if (!confirm(`确定要删除文件 "${filename}" 吗？`)) {
+        return;
+    }
+
+    showLoading('正在删除文件...');
+    try {
+        const response = await fetch(`${API_BASE_URL}/knowledge/file/${filename}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            showToast(`文件 ${filename} 删除成功`, 'success');
+            loadFileList();
+            loadKnowledgeStats();
+        } else {
+            throw new Error('删除文件失败');
+        }
+    } catch (error) {
+        showToast('删除文件失败: ' + error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+// 知识库搜索
+async function searchKnowledge() {
+    const query = document.getElementById('search-input').value.trim();
+    if (!query) {
+        showToast('请输入搜索关键词', 'warning');
+        return;
+    }
+
+    showLoading('正在进行向量相似度搜索...');
+    try {
+        const response = await fetch(`${API_BASE_URL}/knowledge/search?query=${encodeURIComponent(query)}&top_k=5`);
+        if (response.ok) {
+            const data = await response.json();
+            displaySearchResults(data.results, data.search_info);
+        } else {
+            throw new Error('搜索失败');
+        }
+    } catch (error) {
+        showToast('搜索失败: ' + error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+function displaySearchResults(results, searchInfo = null) {
+    const container = document.getElementById('search-results');
+    if (!container) return;
+
+    let resultsHtml = '';
+    
+    // 显示搜索统计信息
+    if (searchInfo) {
+        resultsHtml += `
+            <div class="search-info" style="background: #f1f5f9; padding: 1rem; margin-bottom: 1rem; border-radius: 8px;">
+                <h4>🔍 搜索详情</h4>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 0.5rem;">
+                    <div><strong>查询:</strong> ${searchInfo.query}</div>
+                    <div><strong>搜索文档数:</strong> ${searchInfo.total_docs_searched || 0}</div>
+                    <div><strong>找到结果数:</strong> ${searchInfo.results_found || 0}</div>
+                    <div><strong>返回结果数:</strong> ${searchInfo.results_returned || 0}</div>
+                    <div><strong>查询向量维度:</strong> ${searchInfo.embedding_dimension || 'N/A'}</div>
+                    ${searchInfo.avg_similarity ? `<div><strong>平均相似度:</strong> ${(searchInfo.avg_similarity * 100).toFixed(1)}%</div>` : ''}
+                </div>
+                ${searchInfo.error ? `<div style="color: #ef4444; margin-top: 0.5rem;"><strong>错误:</strong> ${searchInfo.error}</div>` : ''}
+            </div>
+        `;
+    }
+
+    if (results.length === 0) {
+        resultsHtml += '<p style="text-align: center; color: #64748b;">未找到相关文档</p>';
+        container.innerHTML = resultsHtml;
+        return;
+    }
+
+    resultsHtml += results.map((result, index) => {
+        const similarityPercent = (result.score * 100).toFixed(1);
+        const similarityColor = result.score > 0.7 ? '#10b981' : result.score > 0.5 ? '#f59e0b' : '#ef4444';
+        
+        // 使用enhanced_metadata如果存在，否则使用原metadata
+        const metadata = result.enhanced_metadata || result.metadata || {};
+        
+        return `
+            <div class="search-result-item" style="border: 1px solid #e2e8f0; padding: 1rem; margin-bottom: 1rem; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <h4 style="margin: 0;">${result.knowledge_type}</h4>
+                    <span style="background: ${similarityColor}; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.875rem;">
+                        相似度: ${similarityPercent}%
+                    </span>
+                </div>
+                <p style="margin: 0.5rem 0; line-height: 1.6;">${result.content.length > 300 ? result.content.substring(0, 300) + '...' : result.content}</p>
+                <div style="font-size: 0.875rem; color: #64748b; margin-top: 0.5rem;">
+                    ${metadata.source_file ? `<div><strong>来源文件:</strong> ${metadata.source_file}</div>` : ''}
+                    ${metadata.chunk_info ? `<div><strong>文本块:</strong> ${metadata.chunk_info}</div>` : ''}
+                    ${metadata.upload_time ? `<div><strong>上传时间:</strong> ${new Date(metadata.upload_time).toLocaleString()}</div>` : ''}
+                    ${metadata.embedding_dimension ? `<div><strong>向量维度:</strong> ${metadata.embedding_dimension}</div>` : ''}
+                    ${result.distance !== undefined ? `<div><strong>距离分数:</strong> ${result.distance.toFixed(4)}</div>` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = resultsHtml;
+}
+
+// 方案生成
+function fillExample(exampleNum) {
+    const examples = [
+        '设计一项TCR-T细胞药物治疗晚期肺鳞癌的I期临床研究，验证药物的耐受性、安全性和初步有效性',
+        '开展CAR-T细胞疗法治疗复发难治性B细胞淋巴瘤的II期临床试验',
+        '设计一项免疫检查点抑制剂联合化疗治疗晚期胃癌的III期随机对照试验'
+    ];
+    
+    document.getElementById('requirement-input').value = examples[exampleNum - 1];
+}
+
+async function generateProtocol() {
+    const requirement = document.getElementById('requirement-input').value.trim();
+    if (!requirement) {
+        showToast('请输入研究需求描述', 'warning');
+        return;
+    }
+
+    if (generationInProgress) {
+        showToast('生成正在进行中，请等待完成', 'warning');
+        return;
+    }
+
+    generationInProgress = true;
+    resetProgressBars();
+    document.getElementById('results-section').style.display = 'none';
+
+    try {
+        // 模拟生成进度
+        await simulateGenerationProgress();
+
+        // 调用API生成方案
+        const requestData = {
+            user_requirement: requirement,
+            model_type: currentConfig.llm.type,
+            include_quality_check: document.getElementById('include-quality').checked,
+            include_literature: document.getElementById('include-literature').checked,
+            temperature: currentConfig.llm.temperature
+        };
+
+        const response = await fetch(`${API_BASE_URL}/generate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestData)
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            displayGenerationResult(result);
+            showToast('方案生成完成', 'success');
+        } else {
+            const error = await response.json();
+            throw new Error(error.detail || '生成失败');
+        }
+
+    } catch (error) {
+        showToast('生成失败: ' + error.message, 'error');
+        setProgressError();
+    } finally {
+        generationInProgress = false;
+    }
+}
+
+function resetProgressBars() {
+    for (let i = 1; i <= 4; i++) {
+        document.getElementById(`progress-${i}`).style.width = '0%';
+        const status = document.getElementById(`status-${i}`);
+        status.textContent = '等待中';
+        status.className = 'progress-status';
+    }
+}
+
+async function simulateGenerationProgress() {
+    const steps = [
+        { id: 1, name: '需求解析', duration: 1000 },
+        { id: 2, name: '知识检索', duration: 2000 },
+        { id: 3, name: '内容生成', duration: 5000 },
+        { id: 4, name: '质量检查', duration: 1500 }
+    ];
+
+    for (const step of steps) {
+        updateProgress(step.id, 0, '进行中', 'active');
+        
+        // 模拟进度增长
+        for (let progress = 0; progress <= 100; progress += 10) {
+            document.getElementById(`progress-${step.id}`).style.width = `${progress}%`;
+            await new Promise(resolve => setTimeout(resolve, step.duration / 10));
+        }
+        
+        updateProgress(step.id, 100, '已完成', 'completed');
+    }
+}
+
+function updateProgress(stepId, percentage, statusText, statusClass) {
+    document.getElementById(`progress-${stepId}`).style.width = `${percentage}%`;
+    const status = document.getElementById(`status-${stepId}`);
+    status.textContent = statusText;
+    status.className = `progress-status ${statusClass}`;
+}
+
+function setProgressError() {
+    for (let i = 1; i <= 4; i++) {
+        const status = document.getElementById(`status-${i}`);
+        if (!status.classList.contains('completed')) {
+            status.textContent = '失败';
+            status.className = 'progress-status error';
+            break;
+        }
+    }
+}
+
+function displayGenerationResult(result) {
+    const container = document.getElementById('results-content');
+    if (!container) return;
+
+    // 显示基本信息
+    const basicInfo = `
+        <div class="result-summary" style="margin-bottom: 2rem;">
+            <h4>生成摘要</h4>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                <div class="stat-item">
+                    <strong>药物类型:</strong> ${result.extracted_info.drug_type}
+                </div>
+                <div class="stat-item">
+                    <strong>适应症:</strong> ${result.extracted_info.disease}
+                </div>
+                <div class="stat-item">
+                    <strong>试验期别:</strong> ${result.extracted_info.phase}期
+                </div>
+                <div class="stat-item">
+                    <strong>质量评分:</strong> ${result.quality_report.overall_score.toFixed(1)}/100
+                </div>
+            </div>
+        </div>
+    `;
+
+    // 显示方案内容
+    const protocolContent = Object.entries(result.protocol_content).map(([module, content]) => `
+        <div class="result-module">
+            <div class="result-module-header" onclick="toggleResultModule(this)">
+                <h4>${module}</h4>
+                <i class="fas fa-chevron-down"></i>
+            </div>
+            <div class="result-module-content">
+                <div style="white-space: pre-wrap; line-height: 1.6;">${content}</div>
+            </div>
+        </div>
+    `).join('');
+
+    // 显示质量报告
+    const qualityReport = `
+        <div class="quality-report" style="margin-top: 2rem;">
+            <h4>质量评估报告</h4>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                ${Object.entries(result.quality_report.module_scores).map(([check, score]) => `
+                    <div class="quality-item" style="padding: 1rem; background: #f8fafc; border-radius: 8px;">
+                        <div style="font-weight: 500;">${check}</div>
+                        <div style="font-size: 1.2rem; color: ${score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444'};">
+                            ${score}/100
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+
+    // 显示导出选项
+    const exportOptions = `
+        <div class="export-options" style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #e2e8f0;">
+            <h4>导出选项</h4>
+            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                <button class="btn btn-primary" onclick="exportResult(${result.id || 'latest'}, 'word')">
+                    <i class="fas fa-file-word"></i> 导出Word
+                </button>
+                <button class="btn btn-secondary" onclick="exportResult(${result.id || 'latest'}, 'pdf')">
+                    <i class="fas fa-file-pdf"></i> 导出PDF
+                </button>
+                <button class="btn btn-info" onclick="copyResultAsText()">
+                    <i class="fas fa-copy"></i> 复制文本
+                </button>
+            </div>
+        </div>
+    `;
+
+    container.innerHTML = basicInfo + protocolContent + qualityReport + exportOptions;
+    document.getElementById('results-section').style.display = 'block';
+}
+
+function toggleResultModule(header) {
+    const content = header.nextElementSibling;
+    const icon = header.querySelector('i');
+    
+    if (content.classList.contains('active')) {
+        content.classList.remove('active');
+        icon.className = 'fas fa-chevron-down';
+    } else {
+        content.classList.add('active');
+        icon.className = 'fas fa-chevron-up';
+    }
+}
+
+// 导出结果
+async function exportResult(resultId, format) {
+    showLoading(`正在导出${format.toUpperCase()}文档...`);
+    try {
+        const response = await fetch(`${API_BASE_URL}/export/${resultId}?format=${format}`, {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            showToast(`${format.toUpperCase()}文档导出成功: ${result.filename}`, 'success');
+        } else {
+            throw new Error('导出失败');
+        }
+    } catch (error) {
+        showToast('导出失败: ' + error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+function copyResultAsText() {
+    const content = document.getElementById('results-content');
+    const text = content.innerText;
+    
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('内容已复制到剪贴板', 'success');
+    }).catch(() => {
+        showToast('复制失败', 'error');
+    });
+}
+
+// 图表初始化
+function initializeCharts() {
+    // 初始化监控图表
+    initMonitorCharts();
+}
+
+function initMonitorCharts() {
+    const chartConfigs = [
+        { id: 'response-time-chart', type: 'line', label: 'API响应时间 (ms)' },
+        { id: 'query-performance-chart', type: 'bar', label: '查询性能 (ms)' },
+        { id: 'quality-distribution-chart', type: 'pie', label: '质量分布' },
+        { id: 'module-time-chart', type: 'horizontalBar', label: '模块耗时 (s)' }
+    ];    chartConfigs.forEach(config => {
+        const ctx = document.getElementById(config.id);
+        if (ctx) {
+            charts[config.id] = createMonitorChart(ctx, config);
+        }
+    });
+}
+
+function createMonitorChart(ctx, config) {
+    const baseConfig = {
+        type: config.type,
+        data: generateMockData(config.type),
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: config.type !== 'pie' ? {
+                y: {
+                    beginAtZero: true
+                }
+            } : undefined,
+            plugins: {
+                legend: {
+                    display: config.type === 'pie'
+                }
+            }
+        }
+    };
+
+    return new Chart(ctx, baseConfig);
+}
+
+function generateMockData(chartType) {
+    switch (chartType) {
+        case 'line':
+            return {
+                labels: ['1分钟前', '2分钟前', '3分钟前', '4分钟前', '5分钟前'],
+                datasets: [{
+                    label: 'API响应时间',
+                    data: [120, 150, 100, 180, 140],
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37, 99, 235, 0.1)'
+                }]
+            };
+        case 'bar':
+            return {
+                labels: ['文档检索', '向量搜索', '文本生成', '质量检查'],
+                datasets: [{
+                    label: '查询时间',
+                    data: [50, 120, 300, 80],
+                    backgroundColor: ['#2563eb', '#10b981', '#f59e0b', '#ef4444']
+                }]
+            };
+        case 'pie':
+            return {
+                labels: ['优秀', '良好', '一般', '需改进'],
+                datasets: [{
+                    data: [40, 35, 20, 5],
+                    backgroundColor: ['#10b981', '#06b6d4', '#f59e0b', '#ef4444']
+                }]
+            };
+        case 'horizontalBar':
+            return {
+                labels: ['研究背景', '研究设计', '研究人群', '给药方案', '安全评估'],
+                datasets: [{
+                    label: '生成时间',
+                    data: [2.5, 3.2, 1.8, 2.1, 2.8],
+                    backgroundColor: '#2563eb'
+                }]
+            };
+        default:
+            return { labels: [], datasets: [] };
+    }
+}
+
+function renderProcessCharts() {
+    // 更新实时监控数据
+    Object.keys(charts).forEach(chartId => {
+        if (charts[chartId] && chartId.includes('-chart')) {
+            // 模拟数据更新
+            const chart = charts[chartId];
+            if (chart.data && chart.data.datasets[0]) {
+                // 随机更新数据
+                chart.data.datasets[0].data = chart.data.datasets[0].data.map(value => 
+                    Math.max(0, value + (Math.random() - 0.5) * 20)
+                );
+                chart.update();
+            }
+        }
+    });
+}
+
+// UI辅助函数
+function showLoading(message = '处理中...') {
+    const overlay = document.getElementById('loading-overlay');
+    const text = document.getElementById('loading-text');
+    text.textContent = message;
+    overlay.classList.add('active');
+}
+
+function hideLoading() {
+    const overlay = document.getElementById('loading-overlay');
+    overlay.classList.remove('active');
+}
+
+function showToast(message, type = 'info') {
+    console.log(`=== 显示Toast消息 ===`);
+    console.log(`消息: ${message}`);
+    console.log(`类型: ${type}`);
+    
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        console.log('Toast容器不存在，创建新容器');
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+    
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span>${message}</span>
+            <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; cursor: pointer; color: #64748b; font-size: 1.2rem; padding: 0 5px;">×</button>
+        </div>
+    `;
+    
+    container.appendChild(toast);
+    console.log('Toast已添加到容器');
+    
+    // 自动移除
+    setTimeout(() => {
+        if (toast.parentElement) {
+            console.log('自动移除Toast');
+            toast.remove();
+        }
+    }, 8000); // 延长显示时间到8秒
+}
+
+// 定期更新系统状态和监控数据
+setInterval(() => {
+    if (document.querySelector('.tab-content.active').id === 'home') {
+        checkSystemStatus();
+    }
+    // 注释掉自动刷新进程图表以避免无限下拉/滚动问题
+    // if (document.querySelector('.tab-content.active').id === 'process') {
+    //     renderProcessCharts();
+    // }
+}, 30000); // 30秒更新一次
+
+// 聊天功能
+let chatStats = {
+    rounds: 0,
+    totalChars: 0,
+    responseTimes: [],
+    connectionStatus: 'disconnected'
+};
+
+// 初始化聊天功能
+function initializeChat() {
+    // 更新温度滑块显示
+    const chatTempSlider = document.getElementById('chat-temp');
+    const chatTempValue = document.getElementById('chat-temp-value');
+    
+    if (chatTempSlider && chatTempValue) {
+        chatTempSlider.addEventListener('input', function() {
+            chatTempValue.textContent = this.value;
+        });
+    }
+    
+    // 回车键发送消息
+    const chatInput = document.getElementById('chat-input');
+    if (chatInput) {
+        chatInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    }
+    
+    // 更新当前模型显示
+    updateCurrentModelDisplay();
+    
+    // 检查连接状态 checkChatConnection();
+}
+
+// 更新当前模型显示
+function updateCurrentModelDisplay() {
+    const modelDisplay = document.getElementById('current-model-display');
+    if (modelDisplay) {
+        modelDisplay.textContent = `${currentConfig.llm.type} - ${currentConfig.llm.model}`;
+    }
+}
+
+// 检查聊天连接状态
+async function checkChatConnection() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/test/llm`, {
+            method: 'POST'
+        });
+        const result = await response.json();
+        
+        chatStats.connectionStatus = result.success ? 'connected' : 'error';
+        updateChatStats();
+        
+    } catch (error) {
+        chatStats.connectionStatus = 'disconnected';
+        updateChatStats();
+    }
+}
+
+// 发送消息
+async function sendMessage() {
+    const chatInput = document.getElementById('chat-input');
+    const sendBtn = document.getElementById('send-btn');
+    const message = chatInput.value.trim();
+    
+    if (!message) {
+        showToast('请输入消息内容', 'warning');
+        return;
+    }
+    
+    // 清空输入框并禁用发送按钮
+    chatInput.value = '';
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 发送中...';
+    
+    // 添加用户消息到聊天区域
+    addMessageToChat('user', message);
+    
+    // 显示加载指示器
+    const typingIndicator = showTypingIndicator();
+    
+    const startTime = Date.now();
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/chat`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                message: message,
+                temperature: parseFloat(document.getElementById('chat-temp').value)
+            })
+        });
+        
+        const result = await response.json();
+        const responseTime = Date.now() - startTime;
+        
+        // 移除加载指示器
+        removeTypingIndicator(typingIndicator);
+        
+        if (result.success) {
+            // 添加AI回复到聊天区域
+            addMessageToChat('assistant', result.response, responseTime);
+            
+            // 更新统计信息
+            chatStats.rounds++;
+            chatStats.totalChars += message.length + result.response.length;
+            chatStats.responseTimes.push(responseTime);
+            chatStats.connectionStatus = 'connected';
+            updateChatStats();
+            
+            showToast('消息发送成功', 'success');
+        } else {
+            throw new Error(result.message || '发送失败');
+        }
+        
+    } catch (error) {
+        // 移除加载指示器
+        removeTypingIndicator(typingIndicator);
+        
+        // 添加错误消息
+        addMessageToChat('assistant', `抱歉，发生了错误: ${error.message}`, 0, true);
+        
+        chatStats.connectionStatus = 'error';
+        updateChatStats();
+        
+        showToast('消息发送失败: ' + error.message, 'error');
+    } finally {
+        // 恢复发送按钮
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> 发送';
+        chatInput.focus();
+    }
+}
+
+// 发送快速问题
+function sendQuickQuestion(question) {
+    document.getElementById('chat-input').value = question;
+    sendMessage();
+}
+
+// 添加消息到聊天区域
+function addMessageToChat(role, content, responseTime = 0, isError = false) {
+    const chatMessages = document.getElementById('chat-messages');
+    const welcome = chatMessages.querySelector('.chat-welcome');
+    
+    // 移除欢迎信息
+    if (welcome) {
+        welcome.remove();
+    }
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message message-${role}`;
+    
+    const timestamp = new Date().toLocaleTimeString();
+    let metaInfo = timestamp;
+    
+    if (role === 'assistant' && responseTime > 0) {
+        metaInfo += ` • 响应时间: ${responseTime}ms`;
+    }
+    
+    // 如果是AI助手的回复且不是错误消息，使用markdown渲染
+    let processedContent;
+    if (role === 'assistant' && !isError && typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
+        try {
+            // 配置marked选项
+            marked.setOptions({
+                breaks: true,
+                gfm: true,
+                headerIds: false,
+                mangle: false,
+                sanitize: false
+            });
+            
+            // 使用marked渲染markdown并用DOMPurify清理HTML
+            const htmlContent = marked.parse(content);
+            processedContent = DOMPurify.sanitize(htmlContent);
+        } catch (error) {
+            console.warn('Markdown渲染失败，使用纯文本:', error);
+            processedContent = content.replace(/\n/g, '<br>');
+        }
+    } else {
+        processedContent = content.replace(/\n/g, '<br>');
+    }
+    
+    messageDiv.innerHTML = `
+        <div class="message-content ${isError ? 'error' : ''} ${role === 'assistant' && !isError ? 'markdown-content' : ''}">
+            ${processedContent}
+            <div class="message-meta">
+                <span>${metaInfo}</span>
+            </div>
+        </div>
+    `;
+    
+    chatMessages.appendChild(messageDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// 显示输入指示器
+function showTypingIndicator() {
+    const chatMessages = document.getElementById('chat-messages');
+    const indicator = document.createElement('div');
+    indicator.className = 'message message-assistant';
+    indicator.innerHTML = `
+        <div class="typing-indicator">
+            <span>AI正在思考</span>
+            <div class="typing-dots">
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+            </div>
+        </div>
+    `;
+    
+    chatMessages.appendChild(indicator);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    return indicator;
+}
+
+// 移除输入指示器
+function removeTypingIndicator(indicator) {
+    if (indicator && indicator.parentNode) {
+        indicator.parentNode.removeChild(indicator);
+    }
+}
+
+// 清空聊天记录
+function clearChat() {
+    if (confirm('确定要清空所有聊天记录吗？')) {
+        const chatMessages = document.getElementById('chat-messages');
+        chatMessages.innerHTML = `
+            <div class="chat-welcome">
+                <div class="welcome-icon">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <h3>欢迎使用医学AI助手</h3>
+                <p>您可以在这里直接与配置的LLM模型对话</p>
+                <p class="model-info">当前模型：<span id="current-model-display">${currentConfig.llm.type} - ${currentConfig.llm.model}</span></p>
+            </div>
+        `;
+        
+        // 重置统计信息
+        chatStats = {
+            rounds: 0,
+            totalChars: 0,
+            responseTimes: [],
+            connectionStatus: chatStats.connectionStatus
+        };
+        updateChatStats();
+        
+        showToast('聊天记录已清空', 'info');
+    }
+}
+
+// 更新聊天统计信息
+function updateChatStats() {
+    document.getElementById('chat-rounds').textContent = chatStats.rounds;
+    document.getElementById('total-chars').textContent = chatStats.totalChars;
+    
+    // 计算平均响应时间
+    const avgResponseTime = chatStats.responseTimes.length > 0 
+        ? Math.round(chatStats.responseTimes.reduce((a, b) => a + b, 0) / chatStats.responseTimes.length)
+        : 0;
+    document.getElementById('avg-response-time').textContent = `${avgResponseTime}ms`;
+    
+    // 更新连接状态
+    const statusElement = document.getElementById('connection-status');
+    const statusMap = {
+        'connected': { text: '已连接', class: 'online' },
+        'disconnected': { text: '未连接', class: 'offline' },
+        'error': { text: '错误', class: 'error' }
+    };
+    
+    const status = statusMap[chatStats.connectionStatus];
+    statusElement.textContent = status.text;
+    statusElement.className = `stat-value ${status.class}`;
+}
+
+// 查看文件详情
+async function viewFileDetails(filename) {
+    showLoading('正在加载文件详情...');
+    
+    console.log('=== 🔍 查看文件详情调试信息 ===');
+    console.log('传入文件名:', filename);
+    console.log('文件名类型:', typeof filename);
+    console.log('文件名长度:', filename.length);
+    console.log('文件名UTF-8字节:', new TextEncoder().encode(filename));
+    
+    try {
+        // 构建API URL - 让FastAPI自动处理编码
+        const encodedFilename = encodeURIComponent(filename);
+        const url = `${API_BASE_URL}/knowledge/file/${encodedFilename}/details`;
+        
+        console.log('原始文件名:', filename);
+        console.log('编码后文件名:', encodedFilename);
+        console.log('完整请求URL:', url);
+        console.log('API_BASE_URL:', API_BASE_URL);
+        
+        // 添加详细的fetch配置
+        const fetchOptions = {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            }
+        };
+        
+        console.log('📡 发送请求...');
+        console.log('请求选项:', fetchOptions);
+        
+        const response = await fetch(url, fetchOptions);
+        
+        console.log('📥 收到响应:', {
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries(response.headers.entries()),
+            url: response.url
+        });
+        
+        if (!response.ok) {
+            // 尝试解析错误响应
+            let errorText = '';
+            try {
+                const errorData = await response.json();
+                errorText = errorData.detail || errorData.error || JSON.stringify(errorData);
+                console.log('❌ 错误响应JSON:', errorData);
+            } catch (e) {
+                errorText = await response.text();
+                console.log('❌ 错误响应文本:', errorText);
+            }
+            
+            let errorMessage = `获取文件详情失败 (${response.status})`;
+            let suggestion = '';
+            
+            if (response.status === 404) {
+                errorMessage = '文件详情未找到';
+                suggestion = `
+                <br><br><strong>可能的原因：</strong>
+                <br>• 文件名编码问题：${filename}
+                <br>• URL编码后：${encodedFilename}
+                <br>• 文件可能未正确上传到知识库
+                <br>• 文件的embedding数据可能丢失
+                <br><br><strong>建议：</strong>
+                <br>1. 检查后端日志中的调试信息
+                <br>2. 尝试重新上传此文件
+                <br>3. 检查知识库统计信息
+                <br><br><strong>详细错误：</strong><br>${errorText}`;
+            } else if (response.status === 500) {
+                errorMessage = '服务器内部错误';
+                suggestion = `<br><br><strong>详细错误：</strong><br>${errorText}`;
+            }
+            
+            showToast(errorMessage + suggestion, 'error');
+            return;
+        }
+        
+        const data = await response.json();
+        console.log('✅ 成功响应:', data);
+        
+        if (!data.success) {
+            console.log('❌ API返回失败:', data.error);
+            let errorMessage = data.error || '获取文件详情失败';
+            let debugInfo = '';
+            
+            if (data.debug_info) {
+                debugInfo = `
+                <br><br><strong>调试信息：</strong>
+                <br>• 搜索的文件名：${data.debug_info.searched_filename}
+                <br>• 搜索的集合：${data.debug_info.searched_collections?.join(', ')}
+                <br>• 文件名编码：${data.debug_info.filename_encoding}`;
+            }
+            
+            showToast(errorMessage + debugInfo, 'error');
+            return;
+        }
+        
+        // 显示文件详情
+        displayFileDetails(data);
+        
+    } catch (error) {
+        console.error('💥 请求异常:', error);
+        showToast(`网络请求失败: ${error.message}<br><br>请检查：<br>• 后端服务是否正常运行<br>• 网络连接是否正常<br>• API地址是否正确: ${API_BASE_URL}`, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+// 显示文件详情
+function displayFileDetails(data) {
+    const modal = document.getElementById('file-details-modal');
+    const title = document.getElementById('file-details-title');
+      // 设置标题，显示截断状态
+    const truncatedIndicator = data.content_truncated ? 
+        ' <span class="truncated-badge"><i class="fas fa-cut"></i> 内容已截断</span>' : '';
+    title.innerHTML = `<i class="fas fa-file-alt"></i> ${escapeHtml(data.filename)}${truncatedIndicator}`;
+    
+    // 填充文件基本信息
+    const fileInfoContent = document.getElementById('file-info-content');
+    fileInfoContent.innerHTML = `        <div class="info-item">
+            <span class="info-label">文件名:</span>
+            <span class="info-value">${escapeHtml(data.filename)}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">原始大小:</span>
+            <span class="info-value">${formatFileSize(data.file_stats.original_size)}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">分块数量:</span>
+            <span class="info-value">${data.file_stats.chunks_count}</span>
+        </div>        <div class="info-item">
+            <span class="info-label">知识库类型:</span>
+            <span class="info-value">${escapeHtml(String(data.file_stats.knowledge_types || '未知'))}</span>
+        </div>
+        ${data.content_truncated ? `
+        <div class="info-item warning">
+            <span class="info-label">内容状态:</span>
+            <span class="info-value"><i class="fas fa-exclamation-triangle"></i> 内容过长已截断显示</span>
+        </div>
+        ` : ''}
+    `;
+    
+    // 填充embedding信息
+    const embeddingInfoContent = document.getElementById('embedding-info-content');
+    const embeddingInfo = data.embedding_info;
+    embeddingInfoContent.innerHTML = `
+        <div class="info-item">
+            <span class="info-label">总嵌入数:</span>
+            <span class="info-value">${embeddingInfo.total_embeddings}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">向量维度:</span>
+            <span class="info-value">${embeddingInfo.embedding_dimensions || 'N/A'}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">平均块长度:</span>
+            <span class="info-value">${Math.round(embeddingInfo.avg_chunk_length || 0)} 字符</span>
+        </div>        <div class="info-item">
+            <span class="info-label">知识库类型:</span>
+            <span class="info-value">${Array.isArray(embeddingInfo.knowledge_types) ? embeddingInfo.knowledge_types.join(', ') : String(embeddingInfo.knowledge_types || '未知')}</span>
+        </div>
+    `;
+    
+    // 显示原始文件内容（智能处理长内容）
+    displayOriginalContent(data);
+      // 设置分块过滤器选项
+    const chunkFilter = document.getElementById('chunk-filter');
+    if (chunkFilter && data.chunks && Array.isArray(data.chunks)) {
+        const knowledgeTypes = [...new Set(data.chunks.map(chunk => chunk.knowledge_type || '未知'))];
+        chunkFilter.innerHTML = '<option value="all">所有分块</option>' + 
+            knowledgeTypes.map(type => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`).join('');
+    }
+    
+    // 存储分块数据以供过滤使用
+    window.currentFileChunks = data.chunks || [];
+    window.currentFileData = data;
+    currentPage = 1;
+    displayChunks(window.currentFileChunks);
+
+    // 显示模态框
+    modal.style.display = 'flex';
+}
+
+// 显示文件分块
+function displayChunks(chunks) {
+    const chunksContainer = document.getElementById('chunks-container');
+    if (!chunksContainer) {
+        console.error('chunks-container 元素未找到');
+        return;
+    }
+
+    if (!chunks || chunks.length === 0) {
+        chunksContainer.innerHTML = '<div class="empty-state">该文件没有分块数据</div>';
+        return;
+    }
+
+    const chunksHtml = chunks.map((chunk, index) => `
+        <div class="chunk-item">
+            <div class="chunk-header">
+                <div class="chunk-meta">
+                    <span>分块 ${index + 1}</span>
+                    <span>类型: ${escapeHtml(chunk.knowledge_type || '未知')}</span>
+                    <span>长度: ${chunk.content.length} 字符</span>
+                </div>
+                <button class="copy-btn" onclick="copyChunkContent(${index})" title="复制内容">
+                    <i class="fas fa-copy"></i>
+                </button>
+            </div>
+            <div class="chunk-content" id="chunk-${index}">
+                ${escapeHtml(chunk.content)}
+            </div>
+        </div>
+    `).join('');
+
+    chunksContainer.innerHTML = chunksHtml;
+}
+
+// 复制分块内容
+function copyChunkContent(chunkIndex) {
+    const chunkElement = document.getElementById(`chunk-${chunkIndex}`);
+    if (chunkElement) {
+        const textToCopy = chunkElement.textContent;
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            showToast('分块内容已复制到剪贴板', 'success');
+        }).catch(err => {
+            console.error('复制失败:', err);
+            showToast('复制失败', 'error');
+        });
+    }
+}
+
+// 智能显示原始文件内容
+function displayOriginalContent(data) {
+    const originalContent = document.getElementById('original-content');
+    const panelHeader = originalContent.closest('.content-panel').querySelector('.panel-header');
+    
+    // 如果内容被截断，显示预览模式
+    if (data.content_truncated) {
+        const previewContent = data.content_preview || data.original_content.substring(0, 1000) + '...';
+        const fullContent = data.original_content;
+        
+        // 更新面板标题以显示截断状态
+        const headerTitle = panelHeader.querySelector('h4');
+        headerTitle.innerHTML = `<i class="fas fa-file-text"></i> 原始文件内容 <span class="content-badge truncated">已截断</span>`;
+        
+        // 添加展开/折叠控制按钮
+        const controls = panelHeader.querySelector('.panel-controls');
+        controls.innerHTML = `
+            <button class="btn btn-sm content-toggle-btn" onclick="toggleOriginalContent()" id="content-toggle-btn">
+                <i class="fas fa-expand-alt"></i> 显示完整内容
+            </button>
+            <button class="btn btn-sm" onclick="copyToClipboard('original-content')">
+                <i class="fas fa-copy"></i> 复制
+            </button>
+        `;
+        
+        // 设置内容（默认显示预览）
+        originalContent.innerHTML = `
+            <div class="content-preview-section">
+                <div class="content-warning">
+                    <i class="fas fa-info-circle"></i>
+                    内容过长，已显示前 ${previewContent.length} 字符。完整内容包含 ${fullContent.length} 字符。
+                </div>
+                <div class="content-text" id="content-text">${escapeHtml(previewContent)}</div>
+                <div class="content-actions">
+                    <button class="expand-btn" onclick="toggleOriginalContent()">
+                        <i class="fas fa-expand-alt"></i> 显示完整内容
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        // 存储完整内容供后续使用
+        originalContent.setAttribute('data-full-content', fullContent);
+        originalContent.setAttribute('data-preview-content', previewContent);
+        originalContent.setAttribute('data-expanded', 'false');
+        
+    } else {
+        // 内容未被截断，正常显示
+        const headerTitle = panelHeader.querySelector('h4');
+        headerTitle.innerHTML = `<i class="fas fa-file-text"></i> 原始文件内容`;
+        
+        const controls = panelHeader.querySelector('.panel-controls');
+        controls.innerHTML = `
+            <button class="btn btn-sm" onclick="copyToClipboard('original-content')">
+                <i class="fas fa-copy"></i> 复制
+            </button>
+        `;
+        
+        originalContent.textContent = data.original_content || '无法读取原始文件内容';
+    }
+}
+
+// 切换原始内容显示模式
+function toggleOriginalContent() {
+    const originalContent = document.getElementById('original-content');
+    const toggleBtn = document.getElementById('content-toggle-btn');
+    const contentText = document.getElementById('content-text');
+    const expandBtn = originalContent.querySelector('.expand-btn');
+    const isExpanded = originalContent.getAttribute('data-expanded') === 'true';
+    
+    const fullContent = originalContent.getAttribute('data-full-content');
+    const previewContent = originalContent.getAttribute('data-preview-content');
+    
+    if (isExpanded) {
+        // 切换到预览模式
+        contentText.textContent = previewContent;
+        originalContent.setAttribute('data-expanded', 'false');
+        
+        if (toggleBtn) {
+            toggleBtn.innerHTML = '<i class="fas fa-expand-alt"></i> 显示完整内容';
+        }
+        if (expandBtn) {
+            expandBtn.innerHTML = '<i class="fas fa-expand-alt"></i> 显示完整内容';
+        }
+    } else {
+        // 切换到完整模式
+        contentText.textContent = fullContent;
+        originalContent.setAttribute('data-expanded', 'true');
+        
+        if (toggleBtn) {
+            toggleBtn.innerHTML = '<i class="fas fa-compress-alt"></i> 显示预览';
+        }
+        if (expandBtn) {
+            expandBtn.innerHTML = '<i class="fas fa-compress-alt"></i> 显示预览';
+        }
+    }
+}
+
+// 切换分块内容显示
+function toggleChunkContent(chunkIndex) {
+    const chunkItem = document.querySelector(`[data-chunk-index="${chunkIndex}"]`);
+    if (!chunkItem) return;
+    
+    const toggleBtn = chunkItem.querySelector('.toggle-content-btn');
+    const fullContentDiv = chunkItem.querySelector('.content-full');
+    const previewDiv = chunkItem.querySelector('.content-preview');
+    
+    if (!toggleBtn || !fullContentDiv) return;
+    
+    const isExpanded = fullContentDiv.style.display !== 'none';
+    
+    if (isExpanded) {
+        // 切换到预览模式
+        fullContentDiv.style.display = 'none';
+        previewDiv.style.display = 'block';
+        toggleBtn.innerHTML = '<i class="fas fa-expand-alt"></i> 显示完整内容';
+    } else {
+        // 切换到完整模式
+        fullContentDiv.style.display = 'block';
+        previewDiv.style.display = 'none';
+        toggleBtn.innerHTML = '<i class="fas fa-compress-alt"></i> 收起内容';
+    }
+}
+
+// 过滤分块
+function filterChunks() {
+    const filterValue = document.getElementById('chunk-filter').value;
+    const allChunks = window.currentFileChunks || [];
+    
+    if (filterValue === 'all') {
+        displayChunks(allChunks);
+    } else {
+        const filteredChunks = allChunks.filter(chunk => chunk.knowledge_type === filterValue);
+        displayChunks(filteredChunks);
+    }
+}
+
+// 分页相关函数
+function goToPage(pageNumber) {
+    currentPage = pageNumber;
+    displayChunks(filteredChunks);
+}
+
+// 复制内容到剪贴板
+function copyToClipboard(elementId) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+    
+    let textToCopy = '';
+    
+    if (elementId === 'original-content') {
+        // 获取原始内容的文本
+        const contentText = element.querySelector('#content-text');
+        if (contentText) {
+            textToCopy = contentText.textContent;
+        } else {
+            textToCopy = element.textContent;
+        }
+    } else {
+        textToCopy = element.textContent;
+    }
+    
+    navigator.clipboard.writeText(textToCopy).then(() => {
+        showToast('内容已复制到剪贴板', 'success');
+    }).catch(err => {
+        console.error('复制失败:', err);
+        showToast('复制失败', 'error');
+    });
+}
+
+// 关闭文件详情模态框
+function closeFileDetailsModal() {
+    const modal = document.getElementById('file-details-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // 清理数据
+    window.currentFileChunks = [];
+    window.currentFileData = null;
+}
+
+// 模态框标签页切换
+function switchModalTab(tabName) {
+    // 移除所有标签按钮的active状态
+    document.querySelectorAll('.modal-tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // 隐藏所有标签面板
+    document.querySelectorAll('.tab-panel').forEach(panel => {
+        panel.classList.remove('active');
+    });
+    
+    // 激活选中的标签
+    const targetBtn = document.querySelector(`[data-tab="${tabName}"]`);
+    const targetPanel = document.getElementById(tabName);
+    
+    if (targetBtn) targetBtn.classList.add('active');
+    if (targetPanel) targetPanel.classList.add('active');
+}
+
+// 初始化模态框事件监听器
+function initializeModalEventListeners() {
+    // 模态框标签切换
+    document.querySelectorAll('.modal-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            switchModalTab(btn.dataset.tab);
+        });
+    });
+    
+    // 点击模态框背景关闭
+    const modal = document.getElementById('file-details-modal');
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeFileDetailsModal();
+            }
+        });
+    }
+    
+    // ESC键关闭模态框
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const modal = document.getElementById('file-details-modal');
+            if (modal && modal.style.display === 'block') {
+                closeFileDetailsModal();
+            }
+        }
+    });
+}
+
+// 显示模态框
+function showFileDetailsModal() {
+    const modal = document.getElementById('file-details-modal');
+    if (modal) {
+        modal.style.display = 'block';
+        // 默认显示概览标签
+        switchModalTab('overview');
+    }
+}

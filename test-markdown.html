@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown渲染测试</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"></script>
+</head>
+<body>
+    <div style="padding: 2rem; max-width: 800px; margin: 0 auto;">
+        <h1>Markdown渲染测试</h1>
+        
+        <div class="message message-assistant">
+            <div class="message-content markdown-content" id="test-content">
+                <!-- 这里将显示渲染后的markdown内容 -->
+            </div>
+        </div>
+        
+        <script>
+            // 测试markdown内容
+            const testMarkdown = `
+# 临床试验方案生成结果
+
+## 1. 研究背景
+
+这是一项关于**TCR-T细胞药物**治疗晚期肺鳞癌的临床研究。
+
+### 主要特点：
+- 个性化免疫治疗
+- 精准靶向肿瘤细胞
+- 安全性和有效性并重
+
+## 2. 研究设计
+
+本研究采用单臂、开放标签的I期临床试验设计：
+
+\`\`\`
+试验分组：
+- 剂量递增组（3+3设计）
+- 剂量扩展组
+\`\`\`
+
+### 入组标准
+
+1. 年龄18-75岁
+2. 经病理确诊的晚期肺鳞癌
+3. ECOG评分 ≤ 2
+4. 预期生存期 > 3个月
+
+> **重要提示**：所有患者需签署知情同意书
+
+## 3. 统计分析
+
+| 分析类型 | 方法 | 软件 |
+|---------|------|------|
+| 安全性分析 | 描述性统计 | SAS 9.4 |
+| 有效性分析 | Kaplan-Meier | R |
+| 生物标志物 | 相关性分析 | Python |
+
+---
+
+*更多详情请参考完整的研究方案文档。*
+            `;
+
+            // 渲染markdown
+            function renderTestContent() {
+                try {
+                    marked.setOptions({
+                        breaks: true,
+                        gfm: true,
+                        headerIds: false,
+                        mangle: false,
+                        sanitize: false
+                    });
+                    
+                    const htmlContent = marked.parse(testMarkdown);
+                    const safeHtml = DOMPurify.sanitize(htmlContent);
+                    
+                    document.getElementById('test-content').innerHTML = safeHtml;
+                    console.log('Markdown渲染成功');
+                } catch (error) {
+                    console.error('Markdown渲染失败:', error);
+                    document.getElementById('test-content').innerHTML = 
+                        '<p style="color: red;">Markdown渲染失败: ' + error.message + '</p>';
+                }
+            }
+
+            // 页面加载完成后渲染
+            document.addEventListener('DOMContentLoaded', renderTestContent);
+        </script>
+    </div>
+</body>
+</html> 

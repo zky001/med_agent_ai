@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧪 文件上传功能测试（模拟后端）</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .mock-status {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+            color: #92400e;
+        }
+        .test-result {
+            background: #f0f9ff;
+            border: 1px solid #0ea5e9;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div style="padding: 2rem; max-width: 1000px; margin: 0 auto;">
+        <h1>🧪 文件上传功能测试（模拟后端）</h1>
+        
+        <div class="mock-status">
+            ⚠️ <strong>注意：</strong>这个页面使用模拟的后端API来测试前端功能。文件不会真正上传，但可以验证前端逻辑是否正确。
+        </div>
+        
+        <!-- 文件上传区域 -->
+        <div class="upload-card">
+            <h3>📁 文件上传测试</h3>
+            
+            <div class="form-group">
+                <label for="kb-type">知识库分类</label>
+                <select id="kb-type" class="form-select">
+                    <option value="用户上传文档">用户上传文档</option>
+                    <option value="临床试验方案">临床试验方案</option>
+                    <option value="医学文献">医学文献</option>
+                </select>
+            </div>
+            
+            <div class="drag-drop-area" id="drag-drop-area">
+                <div class="upload-icon">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                </div>
+                <p>拖拽文件到此处或点击选择文件</p>
+                <p class="upload-hint">支持 Excel, CSV, PDF, Word, 文本文件</p>
+                <input type="file" id="file-input" multiple>
+            </div>
+            
+            <button class="btn btn-primary" onclick="uploadFiles()" style="margin-top: 1rem;">
+                <i class="fas fa-upload"></i> 开始上传
+            </button>
+        </div>
+        
+        <!-- 测试结果显示 -->
+        <div class="test-result" id="test-results">
+            <h4>📊 测试结果</h4>
+            <div id="results-content">等待文件上传...</div>
+        </div>
+        
+        <!-- 模拟的统计信息 -->
+        <div class="test-result">
+            <h4>📈 模拟统计信息</h4>
+            <div id="mock-stats">
+                <div>用户上传文档: <span id="user-docs-count">0</span> 个</div>
+                <div>总文档数: <span id="total-docs-count">34</span> 个</div>
+            </div>
+        </div>
+        
+        <!-- 模拟的文件列表 -->
+        <div class="test-result">
+            <h4>📋 模拟文件列表</h4>
+            <div id="mock-file-list">暂无文件</div>
+        </div>
+    </div>
+
+    <script>
+        // 模拟全局变量
+        let currentFiles = [];
+        let mockUploadedFiles = [];
+        let mockUserDocsCount = 0;
+        
+        // 模拟API基础URL
+        const API_BASE_URL = 'http://localhost:8000';
+        
+        // 文件处理函数
+        function handleFileSelect(files) {
+            console.log('=== 🎯 handleFileSelect被调用 ===');
+            console.log(`传入文件数量: ${files.length}`);
+            
+            currentFiles = Array.from(files);
+            updateFilePreview();
+            updateTestResults('文件选择', `✅ 已选择 ${files.length} 个文件`);
+            
+            // 显示文件详情
+            const fileDetails = currentFiles.map(file => 
+                `📄 ${file.name} (${formatFileSize(file.size)})`
+            ).join('<br>');
+            
+            updateTestResults('文件详情', fileDetails);
+        }
+        
+        function updateFilePreview() {
+            const dragDropArea = document.getElementById('drag-drop-area');
+            const preview = dragDropArea.querySelector('p');
+            
+            if (currentFiles.length > 0) {
+                const fileNames = currentFiles.map(f => f.name).join(', ');
+                preview.innerHTML = `已选择 ${currentFiles.length} 个文件:<br><small style="color: #666;">${fileNames}</small>`;
+                
+                dragDropArea.style.borderColor = '#10b981';
+                dragDropArea.style.backgroundColor = 'rgba(16, 185, 129, 0.05)';
+            } else {
+                preview.innerHTML = '拖拽文件到此处或点击选择文件<br><span class="upload-hint">支持 Excel, CSV, PDF, Word, 文本文件</span>';
+                dragDropArea.style.borderColor = '';
+                dragDropArea.style.backgroundColor = '';
+            }
+        }
+        
+        // 模拟文件上传
+        async function uploadFiles() {
+            console.log('=== 🚀 uploadFiles被调用 ===');
+            
+            if (currentFiles.length === 0) {
+                showToast('请先选择文件', 'warning');
+                updateTestResults('上传失败', '❌ 没有选择文件');
+                return;
+            }
+            
+            const uploadBtn = document.querySelector('.btn-primary');
+            uploadBtn.disabled = true;
+            uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 正在上传...';
+            
+            updateTestResults('上传开始', `🚀 开始模拟上传 ${currentFiles.length} 个文件...`);
+            
+            try {
+                // 模拟上传延迟
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                let successCount = 0;
+                
+                for (let file of currentFiles) {
+                    // 模拟文件上传成功
+                    const mockFileInfo = {
+                        filename: file.name,
+                        size: file.size,
+                        modified: Date.now() / 1000,
+                        upload_time: new Date().toISOString()
+                    };
+                    
+                    mockUploadedFiles.push(mockFileInfo);
+                    successCount++;
+                    
+                    const recordsAdded = Math.max(1, Math.floor(file.size / 10000));
+                    showToast(`文件 ${file.name} 上传成功，添加了 ${recordsAdded} 条记录`, 'success');
+                }
+                
+                // 更新统计
+                mockUserDocsCount += successCount;
+                document.getElementById('user-docs-count').textContent = mockUserDocsCount;
+                document.getElementById('total-docs-count').textContent = 34 + mockUserDocsCount;
+                
+                // 更新文件列表
+                updateMockFileList();
+                
+                // 清空文件选择
+                currentFiles = [];
+                document.getElementById('file-input').value = '';
+                updateFilePreview();
+                
+                showToast(`成功上传 ${successCount} 个文件`, 'success');
+                updateTestResults('上传完成', `✅ 成功上传 ${successCount} 个文件`);
+                
+            } catch (error) {
+                showToast('上传失败: ' + error.message, 'error');
+                updateTestResults('上传失败', `❌ 错误: ${error.message}`);
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.innerHTML = '<i class="fas fa-upload"></i> 开始上传';
+            }
+        }
+        
+        // 更新模拟文件列表
+        function updateMockFileList() {
+            const container = document.getElementById('mock-file-list');
+            
+            if (mockUploadedFiles.length === 0) {
+                container.innerHTML = '暂无文件';
+                return;
+            }
+            
+            container.innerHTML = mockUploadedFiles.map(file => `
+                <div style="border-bottom: 1px solid #e2e8f0; padding: 0.5rem 0;">
+                    📄 ${file.filename} (${formatFileSize(file.size)})
+                    <small style="color: #64748b; display: block;">
+                        上传时间: ${new Date(file.upload_time).toLocaleString()}
+                    </small>
+                </div>
+            `).join('');
+        }
+        
+        // 更新测试结果
+        function updateTestResults(title, content) {
+            const container = document.getElementById('results-content');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            container.innerHTML += `
+                <div style="margin: 0.5rem 0; padding: 0.5rem; background: #f8fafc; border-radius: 4px;">
+                    <strong>[${timestamp}] ${title}:</strong><br>
+                    ${content}
+                </div>
+            `;
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        // 文件大小格式化
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        // Toast提示
+        function showToast(message, type = 'info') {
+            let container = document.getElementById('toast-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'toast-container';
+                container.className = 'toast-container';
+                document.body.appendChild(container);
+            }
+            
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>${message}</span>
+                    <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; cursor: pointer; color: #64748b; font-size: 1.2rem; padding: 0 5px;">×</button>
+                </div>
+            `;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                if (toast.parentElement) {
+                    toast.remove();
+                }
+            }, 5000);
+        }
+        
+        // 设置文件上传事件监听器
+        function setupFileUploadListeners() {
+            console.log('=== 设置文件上传事件监听器 ===');
+            
+            const dragDropArea = document.getElementById('drag-drop-area');
+            const fileInput = document.getElementById('file-input');
+
+            if (!dragDropArea || !fileInput) {
+                console.error('❌ 元素未找到');
+                return;
+            }
+
+            // 移除旧事件监听器
+            const newDragDropArea = dragDropArea.cloneNode(true);
+            const newFileInput = newDragDropArea.querySelector('#file-input');
+            dragDropArea.parentNode.replaceChild(newDragDropArea, dragDropArea);
+
+            // 拖拽事件
+            newDragDropArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                newDragDropArea.classList.add('dragover');
+            });
+
+            newDragDropArea.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                if (!newDragDropArea.contains(e.relatedTarget)) {
+                    newDragDropArea.classList.remove('dragover');
+                }
+            });
+
+            newDragDropArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                newDragDropArea.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                
+                if (files.length > 0) {
+                    handleFileSelect(files);
+                    showToast(`通过拖拽选择了 ${files.length} 个文件`, 'success');
+                }
+            });
+
+            // 点击事件
+            newDragDropArea.addEventListener('click', (e) => {
+                if (e.target !== newFileInput) {
+                    newFileInput.click();
+                }
+            });
+
+            // 文件选择事件
+            newFileInput.addEventListener('change', (e) => {
+                const files = e.target.files;
+                if (files.length > 0) {
+                    handleFileSelect(files);
+                    showToast(`已选择 ${files.length} 个文件`, 'success');
+                }
+            });
+
+            console.log('✅ 事件监听器绑定完成');
+        }
+        
+        // 页面初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 页面初始化...');
+            setupFileUploadListeners();
+            updateTestResults('页面初始化', '✅ 页面加载完成，事件监听器已设置');
+        });
+    </script>
+</body>
+</html> 

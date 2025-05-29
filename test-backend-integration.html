@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔧 后端集成测试 - 嵌入模型与文件上传</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .test-section {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+        }
+        .status-indicator {
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            margin: 0.5rem 0;
+            font-weight: 500;
+        }
+        .status-success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+        .status-error {
+            background: #fef2f2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+        .status-warning {
+            background: #fefce8;
+            color: #92400e;
+            border: 1px solid #fde68a;
+        }
+        .code-block {
+            background: #1e293b;
+            color: #f8fafc;
+            padding: 1rem;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.875rem;
+            overflow-x: auto;
+            margin: 0.5rem 0;
+        }
+        .config-input {
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div style="padding: 2rem; max-width: 1200px; margin: 0 auto;">
+        <h1>🔧 后端集成测试</h1>
+        <p>专门测试嵌入模型和文件上传功能的完整流程</p>
+        
+        <!-- API配置 -->
+        <div class="test-section">
+            <h3>⚙️ API配置</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div>
+                    <label>后端API地址:</label>
+                    <input type="text" id="api-base" value="http://localhost:8000" class="config-input">
+                </div>
+                <div>
+                    <label>嵌入模型API地址:</label>
+                    <input type="text" id="embed-url" value="http://192.168.196.151:9998" class="config-input">
+                </div>
+                <div>
+                    <label>嵌入模型名称:</label>
+                    <input type="text" id="embed-model" value="bge-large-zh-v1.5" class="config-input">
+                </div>
+                <div>
+                    <label>API密钥:</label>
+                    <input type="text" id="embed-key" value="EMPTY" class="config-input">
+                </div>
+            </div>
+            <button class="btn btn-secondary" onclick="updateBackendConfig()">
+                <i class="fas fa-cog"></i> 更新后端配置
+            </button>
+        </div>
+
+        <!-- 后端状态检查 -->
+        <div class="test-section">
+            <h3>🏥 后端状态检查</h3>
+            <button class="btn btn-primary" onclick="checkBackendHealth()">
+                <i class="fas fa-heartbeat"></i> 检查后端健康状态
+            </button>
+            <div id="health-status"></div>
+        </div>
+
+        <!-- 嵌入模型测试 -->
+        <div class="test-section">
+            <h3>🧠 嵌入模型测试</h3>
+            <p>测试嵌入模型API连接和功能</p>
+            <button class="btn btn-primary" onclick="testEmbeddingModel()">
+                <i class="fas fa-brain"></i> 测试嵌入模型
+            </button>
+            <div id="embedding-test-result"></div>
+        </div>
+
+        <!-- 文件上传测试 -->
+        <div class="test-section">
+            <h3>📁 文件上传测试</h3>
+            <p>测试文件上传、文本提取和分块处理</p>
+            
+            <div class="form-group">
+                <label for="test-kb-type">知识库分类</label>
+                <select id="test-kb-type" class="form-select">
+                    <option value="用户上传文档">用户上传文档</option>
+                    <option value="临床试验方案">临床试验方案</option>
+                    <option value="医学文献">医学文献</option>
+                </select>
+            </div>
+            
+            <div class="drag-drop-area" id="test-drag-drop-area">
+                <div class="upload-icon">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                </div>
+                <p>拖拽文件到此处或点击选择文件</p>
+                <p class="upload-hint">测试文本文件、CSV文件等</p>
+                <input type="file" id="test-file-input" multiple>
+            </div>
+            
+            <button class="btn btn-primary" onclick="uploadTestFiles()" style="margin-top: 1rem;">
+                <i class="fas fa-upload"></i> 上传并测试处理
+            </button>
+            
+            <div id="upload-test-result"></div>
+        </div>
+
+        <!-- 知识库查询测试 -->
+        <div class="test-section">
+            <h3>🔍 知识库查询测试</h3>
+            <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+                <input type="text" id="search-query" placeholder="输入搜索关键词..." style="flex: 1;">
+                <button class="btn btn-primary" onclick="testKnowledgeSearch()">
+                    <i class="fas fa-search"></i> 搜索
+                </button>
+            </div>
+            <div id="search-test-result"></div>
+        </div>
+
+        <!-- 统计信息 -->
+        <div class="test-section">
+            <h3>📊 统计信息</h3>
+            <button class="btn btn-secondary" onclick="loadKnowledgeStats()">
+                <i class="fas fa-chart-bar"></i> 刷新统计
+            </button>
+            <div id="stats-display"></div>
+        </div>
+
+        <!-- 文件列表 -->
+        <div class="test-section">
+            <h3>📋 文件列表</h3>
+            <button class="btn btn-secondary" onclick="loadFileList()">
+                <i class="fas fa-list"></i> 刷新列表
+            </button>
+            <div id="files-display"></div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let currentFiles = [];
+        let apiBaseUrl = 'http://localhost:8000';
+
+        // 页面初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            setupFileUploadListeners();
+            checkBackendHealth();
+        });
+
+        // 设置文件上传监听器
+        function setupFileUploadListeners() {
+            const dragDropArea = document.getElementById('test-drag-drop-area');
+            const fileInput = document.getElementById('test-file-input');
+
+            if (!dragDropArea || !fileInput) return;
+
+            // 移除旧事件监听器
+            const newDragDropArea = dragDropArea.cloneNode(true);
+            const newFileInput = newDragDropArea.querySelector('#test-file-input');
+            dragDropArea.parentNode.replaceChild(newDragDropArea, dragDropArea);
+
+            // 拖拽事件
+            newDragDropArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                newDragDropArea.classList.add('dragover');
+            });
+
+            newDragDropArea.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                if (!newDragDropArea.contains(e.relatedTarget)) {
+                    newDragDropArea.classList.remove('dragover');
+                }
+            });
+
+            newDragDropArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                newDragDropArea.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleTestFileSelect(files);
+                }
+            });
+
+            // 点击事件
+            newDragDropArea.addEventListener('click', (e) => {
+                if (e.target !== newFileInput) {
+                    newFileInput.click();
+                }
+            });
+
+            // 文件选择事件
+            newFileInput.addEventListener('change', (e) => {
+                const files = e.target.files;
+                if (files.length > 0) {
+                    handleTestFileSelect(files);
+                }
+            });
+        }
+
+        // 处理文件选择
+        function handleTestFileSelect(files) {
+            currentFiles = Array.from(files);
+            const dragDropArea = document.getElementById('test-drag-drop-area');
+            const preview = dragDropArea.querySelector('p');
+            
+            if (currentFiles.length > 0) {
+                const fileNames = currentFiles.map(f => f.name).join(', ');
+                preview.innerHTML = `已选择 ${currentFiles.length} 个文件:<br><small style="color: #666;">${fileNames}</small>`;
+                dragDropArea.style.borderColor = '#10b981';
+                dragDropArea.style.backgroundColor = 'rgba(16, 185, 129, 0.05)';
+            }
+        }
+
+        // 更新后端配置
+        async function updateBackendConfig() {
+            const embedUrl = document.getElementById('embed-url').value;
+            const embedModel = document.getElementById('embed-model').value;
+            const embedKey = document.getElementById('embed-key').value;
+            apiBaseUrl = document.getElementById('api-base').value;
+
+            try {
+                const formData = new FormData();
+                formData.append('embed_type', 'local-api');
+                formData.append('embed_url', embedUrl);
+                formData.append('embed_model', embedModel);
+                formData.append('embed_key', embedKey);
+                formData.append('embed_dimension', '1024');
+
+                const response = await fetch(`${apiBaseUrl}/config/update`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    showStatus('config-status', '配置更新成功', 'success');
+                } else {
+                    showStatus('config-status', '配置更新失败', 'error');
+                }
+            } catch (error) {
+                showStatus('config-status', `配置更新错误: ${error.message}`, 'error');
+            }
+        }
+
+        // 检查后端健康状态
+        async function checkBackendHealth() {
+            try {
+                const response = await fetch(`${apiBaseUrl}/health`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const statusHtml = `
+                        <div class="status-success">
+                            ✅ 后端服务正常运行<br>
+                            <small>服务: ${data.service} | 时间: ${data.timestamp}</small>
+                        </div>
+                    `;
+                    document.getElementById('health-status').innerHTML = statusHtml;
+                } else {
+                    throw new Error('健康检查失败');
+                }
+            } catch (error) {
+                const statusHtml = `
+                    <div class="status-error">
+                        ❌ 后端服务连接失败: ${error.message}
+                    </div>
+                `;
+                document.getElementById('health-status').innerHTML = statusHtml;
+            }
+        }
+
+        // 测试嵌入模型
+        async function testEmbeddingModel() {
+            const resultDiv = document.getElementById('embedding-test-result');
+            resultDiv.innerHTML = '<div class="status-warning">🔄 正在测试嵌入模型...</div>';
+
+            try {
+                const response = await fetch(`${apiBaseUrl}/test/embedding`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    const resultHtml = `
+                        <div class="status-success">
+                            ✅ 嵌入模型测试成功<br>
+                            <strong>模型类型:</strong> ${result.model_type}<br>
+                            <strong>模型名称:</strong> ${result.model_name || 'N/A'}<br>
+                            <strong>向量维度:</strong> ${result.dimension}<br>
+                            <strong>示例值:</strong> [${result.sample_values.join(', ')}]
+                        </div>
+                        <div class="code-block">
+API响应: ${JSON.stringify(result, null, 2)}
+                        </div>
+                    `;
+                    resultDiv.innerHTML = resultHtml;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="status-error">
+                            ❌ 嵌入模型测试失败<br>
+                            <strong>错误信息:</strong> ${result.message}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="status-error">
+                        ❌ 测试请求失败: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // 上传测试文件
+        async function uploadTestFiles() {
+            if (currentFiles.length === 0) {
+                showToast('请先选择文件', 'warning');
+                return;
+            }
+
+            const resultDiv = document.getElementById('upload-test-result');
+            const knowledgeType = document.getElementById('test-kb-type').value;
+            
+            resultDiv.innerHTML = '<div class="status-warning">🔄 正在上传和处理文件...</div>';
+
+            try {
+                let allResults = [];
+
+                for (let file of currentFiles) {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('knowledge_type', knowledgeType);
+                    formData.append('title', file.name.split('.')[0]);
+
+                    const response = await fetch(`${apiBaseUrl}/knowledge/upload`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const result = await response.json();
+                    allResults.push({ file: file.name, result });
+                }
+
+                // 显示结果
+                let resultsHtml = '';
+                for (let { file, result } of allResults) {
+                    if (result.success) {
+                        resultsHtml += `
+                            <div class="status-success">
+                                ✅ ${file} 上传成功<br>
+                                <strong>记录数:</strong> ${result.records_added}<br>
+                                <strong>文本块数:</strong> ${result.chunks_count}<br>
+                                <strong>文件类型:</strong> ${result.processing_info.file_type}<br>
+                                <strong>文本提取:</strong> ${result.processing_info.text_extracted ? '成功' : '失败'}<br>
+                                <strong>分块处理:</strong> ${result.processing_info.chunking_applied ? '已应用' : '未应用'}
+                            </div>
+                        `;
+                    } else {
+                        resultsHtml += `
+                            <div class="status-error">
+                                ❌ ${file} 上传失败: ${result.message || result.detail}
+                            </div>
+                        `;
+                    }
+                }
+
+                resultDiv.innerHTML = resultsHtml;
+
+                // 清空文件选择
+                currentFiles = [];
+                document.getElementById('test-file-input').value = '';
+                const dragDropArea = document.getElementById('test-drag-drop-area');
+                dragDropArea.querySelector('p').innerHTML = '拖拽文件到此处或点击选择文件';
+                dragDropArea.style.borderColor = '';
+                dragDropArea.style.backgroundColor = '';
+
+                // 刷新统计和文件列表
+                loadKnowledgeStats();
+                loadFileList();
+
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="status-error">
+                        ❌ 上传过程出错: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // 测试知识库搜索
+        async function testKnowledgeSearch() {
+            const query = document.getElementById('search-query').value.trim();
+            if (!query) {
+                showToast('请输入搜索关键词', 'warning');
+                return;
+            }
+
+            const resultDiv = document.getElementById('search-test-result');
+            resultDiv.innerHTML = '<div class="status-warning">🔄 正在进行向量相似度搜索...</div>';
+
+            try {
+                const response = await fetch(`${apiBaseUrl}/knowledge/search?query=${encodeURIComponent(query)}&top_k=5`);
+                const result = await response.json();
+
+                if (result.success) {
+                    if (result.results.length > 0) {
+                        let resultsHtml = `
+                            <div class="status-success">
+                                ✅ 找到 ${result.results.length} 个相关结果
+                            </div>
+                        `;
+                        
+                        // 显示搜索信息
+                        if (result.search_info) {
+                            resultsHtml += `
+                                <div style="background: #f1f5f9; padding: 1rem; margin: 0.5rem 0; border-radius: 6px;">
+                                    <h4>🔍 搜索详情</h4>
+                                    <p><strong>查询:</strong> ${result.search_info.query}</p>
+                                    <p><strong>搜索的文档数:</strong> ${result.search_info.total_docs_searched}</p>
+                                    <p><strong>找到结果数:</strong> ${result.search_info.results_found}</p>
+                                    <p><strong>查询向量维度:</strong> ${result.search_info.embedding_dimension}</p>
+                                </div>
+                            `;
+                        }
+                        
+                        result.results.forEach((item, index) => {
+                            const similarityPercent = (item.score * 100).toFixed(1);
+                            const similarityColor = item.score > 0.7 ? '#10b981' : item.score > 0.5 ? '#f59e0b' : '#ef4444';
+                            
+                            resultsHtml += `
+                                <div style="border: 1px solid #e2e8f0; padding: 1rem; margin: 0.5rem 0; border-radius: 6px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                        <h4>结果 ${index + 1}</h4>
+                                        <span style="background: ${similarityColor}; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.875rem;">
+                                            相似度: ${similarityPercent}%
+                                        </span>
+                                    </div>
+                                    <p><strong>类型:</strong> ${item.knowledge_type}</p>
+                                    <p><strong>内容:</strong> ${item.content}</p>
+                                    <div style="font-size: 0.875rem; color: #64748b;">
+                                        <p><strong>来源:</strong> ${item.metadata.source_file || item.metadata.title}</p>
+                                        <p><strong>文本块:</strong> 第 ${item.metadata.chunk_index + 1} 块</p>
+                                        <p><strong>上传时间:</strong> ${new Date(item.metadata.upload_time).toLocaleString()}</p>
+                                        ${item.metadata.embedding_dimension ? `<p><strong>向量维度:</strong> ${item.metadata.embedding_dimension}</p>` : ''}
+                                    </div>
+                                </div>
+                            `;
+                        });
+
+                        resultDiv.innerHTML = resultsHtml;
+                    } else {
+                        let messageHtml = '<div class="status-warning">⚠️ 没有找到相关结果</div>';
+                        
+                        if (result.message) {
+                            messageHtml += `<p>${result.message}</p>`;
+                        }
+                        
+                        if (result.search_info) {
+                            messageHtml += `
+                                <div style="background: #fef3c7; padding: 1rem; margin: 0.5rem 0; border-radius: 6px;">
+                                    <p><strong>搜索信息:</strong></p>
+                                    <p>• 查询: ${result.search_info.query}</p>
+                                    <p>• 搜索的文档数: ${result.search_info.total_docs_searched}</p>
+                                    <p>• 查询向量维度: ${result.search_info.embedding_dimension}</p>
+                                </div>
+                            `;
+                        }
+                        
+                        resultDiv.innerHTML = messageHtml;
+                    }
+                } else {
+                    resultDiv.innerHTML = `<div class="status-error">❌ 搜索失败: ${result.message}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="status-error">❌ 搜索请求失败: ${error.message}</div>`;
+            }
+        }
+
+        // 加载知识库统计
+        async function loadKnowledgeStats() {
+            try {
+                const response = await fetch(`${apiBaseUrl}/knowledge/stats`);
+                const result = await response.json();
+
+                if (result.success) {
+                    let statsHtml = '<div class="status-success">✅ 统计信息加载成功</div>';
+                    
+                    // 显示总体统计
+                    if (result.summary) {
+                        statsHtml += `
+                            <div style="background: #f1f5f9; padding: 1rem; margin: 0.5rem 0; border-radius: 6px;">
+                                <h4>📊 总体统计</h4>
+                                <p><strong>向量化文档总数:</strong> ${result.summary.total_embedded_documents}</p>
+                                <p><strong>上传文件总数:</strong> ${result.summary.total_uploaded_files}</p>
+                                <p><strong>嵌入模型类型:</strong> ${result.summary.embedding_model}</p>
+                                <p><strong>平均每文件文档数:</strong> ${result.summary.avg_docs_per_file.toFixed(1)}</p>
+                            </div>
+                        `;
+                    }
+                    
+                    // 显示各类型统计
+                    const total = Object.values(result.stats).reduce((sum, stat) => sum + (stat.document_count || 0), 0);
+                    statsHtml += `<h4>📚 分类统计</h4>`;
+                    
+                    Object.entries(result.stats).forEach(([type, stat]) => {
+                        const count = stat.document_count || 0;
+                        const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
+                        statsHtml += `
+                            <p><strong>${type}:</strong> ${count} 个文档 (${percentage}%)</p>
+                        `;
+                    });
+
+                    document.getElementById('stats-display').innerHTML = statsHtml;
+                } else {
+                    document.getElementById('stats-display').innerHTML = '<div class="status-error">❌ 统计加载失败</div>';
+                }
+            } catch (error) {
+                document.getElementById('stats-display').innerHTML = `<div class="status-error">❌ 统计请求失败: ${error.message}</div>`;
+            }
+        }
+
+        // 加载文件列表
+        async function loadFileList() {
+            try {
+                const response = await fetch(`${apiBaseUrl}/knowledge/files`);
+                const result = await response.json();
+
+                if (result.success) {
+                    let filesHtml = `
+                        <div class="status-success">
+                            ✅ 文件列表加载成功 
+                            (共 ${result.files.length} 个文件，${result.total_embedded_documents || 0} 个向量文档)
+                        </div>
+                    `;
+                    
+                    if (result.files.length > 0) {
+                        result.files.forEach(file => {
+                            const embeddingStatus = file.embedded_count > 0 ? '✅' : '❌';
+                            const embeddingInfo = file.embedded_count > 0 ? 
+                                `成功: ${file.embedded_count}/${file.chunks_count}` : 
+                                '未向量化';
+                            
+                            filesHtml += `
+                                <div style="border: 1px solid #e2e8f0; padding: 1rem; margin: 0.5rem 0; border-radius: 6px;">
+                                    <h4>${file.original_name || file.filename}</h4>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                        <div>
+                                            <p><strong>类型:</strong> ${file.knowledge_type}</p>
+                                            <p><strong>大小:</strong> ${formatFileSize(file.size)}</p>
+                                            <p><strong>文本块数:</strong> ${file.chunks_count || 'N/A'}</p>
+                                        </div>
+                                        <div>
+                                            <p><strong>向量化:</strong> ${embeddingStatus} ${embeddingInfo}</p>
+                                            <p><strong>上传时间:</strong> ${new Date(file.upload_time).toLocaleString()}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    } else {
+                        filesHtml += '<p>暂无上传的文件</p>';
+                    }
+
+                    document.getElementById('files-display').innerHTML = filesHtml;
+                } else {
+                    document.getElementById('files-display').innerHTML = '<div class="status-error">❌ 文件列表加载失败</div>';
+                }
+            } catch (error) {
+                document.getElementById('files-display').innerHTML = `<div class="status-error">❌ 文件列表请求失败: ${error.message}</div>`;
+            }
+        }
+
+        // 显示状态
+        function showStatus(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.innerHTML = `<div class="status-${type}">${message}</div>`;
+            }
+        }
+
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Toast提示
+        function showToast(message, type = 'info') {
+            let container = document.getElementById('toast-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'toast-container';
+                container.className = 'toast-container';
+                document.body.appendChild(container);
+            }
+            
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>${message}</span>
+                    <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; cursor: pointer; color: #64748b; font-size: 1.2rem; padding: 0 5px;">×</button>
+                </div>
+            `;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                if (toast.parentElement) {
+                    toast.remove();
+                }
+            }, 5000);
+        }
+    </script>
+</body>
+</html> 

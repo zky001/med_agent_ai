@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>功能修复测试页面</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div style="padding: 2rem; max-width: 1200px; margin: 0 auto;">
+        <h1>🔧 功能修复测试页面</h1>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin: 2rem 0;">
+            <!-- 文件上传测试 -->
+            <div class="upload-card">
+                <h3><i class="fas fa-file-upload"></i> 文件上传功能测试</h3>
+                
+                <div class="drag-drop-area" id="drag-drop-area">
+                    <div class="upload-icon">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                    </div>
+                    <p>拖拽文件到此处或点击选择文件</p>
+                    <p class="upload-hint">支持 Excel, CSV, PDF, Word, 文本文件</p>
+                    <input type="file" id="file-input" multiple accept=".xlsx,.xls,.csv,.pdf,.docx,.doc,.txt,.md">
+                </div>
+                
+                <button class="btn btn-primary" onclick="testUpload()" style="margin-top: 1rem;">
+                    <i class="fas fa-upload"></i> 测试上传反馈
+                </button>
+                
+                <div style="margin-top: 1rem; padding: 1rem; background: #f8fafc; border-radius: 8px;">
+                    <h4>测试步骤：</h4>
+                    <ol>
+                        <li>点击上传区域选择文件</li>
+                        <li>或者拖拽文件到上传区域</li>
+                        <li>观察是否有Toast消息提示</li>
+                        <li>观察上传区域是否变色</li>
+                        <li>观察是否显示文件名</li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- 嵌入模型配置测试 -->
+            <div class="config-card">
+                <h3><i class="fas fa-vector-square"></i> 嵌入模型配置测试</h3>
+                
+                <div class="form-group">
+                    <label for="test-embed-type">模型类型</label>
+                    <select id="test-embed-type" class="form-control" onchange="testToggleDisplay()">
+                        <option value="sentence-transformers">SentenceTransformers</option>
+                        <option value="openai">OpenAI Embeddings</option>
+                        <option value="local-api" selected>本地API (OpenAI兼容)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group" id="test-embed-url-group">
+                    <label for="test-embed-url">API地址</label>
+                    <input type="text" id="test-embed-url" class="form-control" 
+                           value="http://192.168.22.191:8000/v1" placeholder="嵌入模型API地址">
+                </div>
+                
+                <div class="form-group" id="test-embed-key-group">
+                    <label for="test-embed-key">API密钥</label>
+                    <input type="password" id="test-embed-key" class="form-control" 
+                           value="EMPTY" placeholder="API Key (可选)">
+                </div>
+                
+                <div class="form-group">
+                    <label for="test-embed-model">模型名称</label>
+                    <input type="text" id="test-embed-model" class="form-control" 
+                           value="auto" placeholder="嵌入模型名称">
+                </div>
+                
+                <div class="form-group">
+                    <label for="test-embed-dim">向量维度</label>
+                    <input type="number" id="test-embed-dim" class="form-control" 
+                           value="4096" placeholder="向量维度">
+                </div>
+                
+                <div style="margin-top: 1rem; padding: 1rem; background: #f8fafc; border-radius: 8px;">
+                    <h4>测试步骤：</h4>
+                    <ol>
+                        <li>切换模型类型选择框</li>
+                        <li>观察API地址和密钥字段是否正确显示/隐藏</li>
+                        <li>local-api 和 openai 应该显示全部字段</li>
+                        <li>sentence-transformers 应该隐藏API字段</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+
+        <!-- 测试结果显示区域 -->
+        <div style="margin-top: 2rem; padding: 1.5rem; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <h3><i class="fas fa-clipboard-check"></i> 测试结果</h3>
+            <div id="test-results" style="font-family: monospace; background: #f1f5f9; padding: 1rem; border-radius: 8px; margin-top: 1rem;">
+                等待测试结果...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 简化的测试脚本
+        let currentFiles = [];
+        
+        function testToggleDisplay() {
+            const embedType = document.getElementById('test-embed-type');
+            const urlGroup = document.getElementById('test-embed-url-group');
+            const keyGroup = document.getElementById('test-embed-key-group');
+            
+            const selectedType = embedType.value;
+            console.log('测试嵌入模型类型切换:', selectedType);
+            
+            if (selectedType === 'openai' || selectedType === 'local-api') {
+                urlGroup.style.display = 'block';
+                keyGroup.style.display = 'block';
+                updateTestResults(`✅ 切换到 ${selectedType}，API字段已显示`);
+            } else {
+                urlGroup.style.display = 'none';
+                keyGroup.style.display = 'none';
+                updateTestResults(`✅ 切换到 ${selectedType}，API字段已隐藏`);
+            }
+        }
+        
+        function testUpload() {
+            if (currentFiles.length === 0) {
+                showToast('请先选择文件进行测试', 'warning');
+                updateTestResults('❌ 没有选择文件');
+            } else {
+                showToast('文件上传功能测试成功！', 'success');
+                updateTestResults(`✅ 文件上传测试成功，已选择 ${currentFiles.length} 个文件`);
+            }
+        }
+        
+        function updateTestResults(message) {
+            const results = document.getElementById('test-results');
+            const timestamp = new Date().toLocaleTimeString();
+            results.innerHTML += `[${timestamp}] ${message}\n`;
+            results.scrollTop = results.scrollHeight;
+        }
+        
+        function handleFileSelect(files) {
+            currentFiles = Array.from(files);
+            updateFilePreview();
+            updateTestResults(`✅ 文件选择成功: ${currentFiles.map(f => f.name).join(', ')}`);
+        }
+
+        function updateFilePreview() {
+            const dragDropArea = document.getElementById('drag-drop-area');
+            const preview = dragDropArea.querySelector('p');
+            
+            if (currentFiles.length > 0) {
+                const fileNames = currentFiles.map(f => f.name).join(', ');
+                preview.innerHTML = `已选择 ${currentFiles.length} 个文件:<br><small style="color: #666;">${fileNames}</small>`;
+                dragDropArea.style.borderColor = '#10b981';
+                dragDropArea.style.backgroundColor = 'rgba(16, 185, 129, 0.05)';
+            } else {
+                preview.innerHTML = '拖拽文件到此处或点击选择文件<br><span class="upload-hint">支持 Excel, CSV, PDF, Word, 文本文件</span>';
+                dragDropArea.style.borderColor = '';
+                dragDropArea.style.backgroundColor = '';
+            }
+        }
+        
+        function showToast(message, type = 'info') {
+            let container = document.getElementById('toast-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'toast-container';
+                container.className = 'toast-container';
+                document.body.appendChild(container);
+            }
+            
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>${message}</span>
+                    <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; cursor: pointer; color: #64748b; font-size: 1.2rem; padding: 0 5px;">×</button>
+                </div>
+            `;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                if (toast.parentElement) {
+                    toast.remove();
+                }
+            }, 5000);
+        }
+        
+        // 初始化文件上传事件
+        document.addEventListener('DOMContentLoaded', function() {
+            const dragDropArea = document.getElementById('drag-drop-area');
+            const fileInput = document.getElementById('file-input');
+
+            // 拖拽事件
+            dragDropArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dragDropArea.classList.add('dragover');
+            });
+
+            dragDropArea.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                if (!dragDropArea.contains(e.relatedTarget)) {
+                    dragDropArea.classList.remove('dragover');
+                }
+            });
+
+            dragDropArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dragDropArea.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleFileSelect(files);
+                    showToast(`通过拖拽选择了 ${files.length} 个文件`, 'success');
+                }
+            });
+
+            // 点击事件
+            dragDropArea.addEventListener('click', (e) => {
+                if (e.target !== fileInput) {
+                    fileInput.click();
+                }
+            });
+
+            // 文件选择事件
+            fileInput.addEventListener('change', (e) => {
+                const files = e.target.files;
+                if (files.length > 0) {
+                    handleFileSelect(files);
+                    showToast(`已选择 ${files.length} 个文件`, 'success');
+                }
+            });
+            
+            // 初始化嵌入模型配置显示
+            testToggleDisplay();
+            updateTestResults('🚀 测试页面初始化完成');
+        });
+    </script>
+</body>
+</html> 

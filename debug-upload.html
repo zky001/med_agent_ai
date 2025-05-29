@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🐛 文件上传调试页面</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .debug-panel {
+            background: #1e293b;
+            color: #f8fafc;
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: monospace;
+            margin: 1rem 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .test-btn {
+            margin: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 6px;
+            background: #2563eb;
+            color: white;
+            cursor: pointer;
+        }
+        .test-btn:hover {
+            background: #1d4ed8;
+        }
+    </style>
+</head>
+<body>
+    <div style="padding: 2rem; max-width: 1000px; margin: 0 auto;">
+        <h1>🐛 文件上传功能调试</h1>
+        
+        <!-- 调试控制台 -->
+        <div class="debug-panel" id="debug-console">
+            [系统] 调试控制台启动...<br>
+        </div>
+        
+        <!-- 测试按钮 -->
+        <div style="margin: 1rem 0;">
+            <button class="test-btn" onclick="testElements()">🔍 检查DOM元素</button>
+            <button class="test-btn" onclick="testEventListeners()">🎧 测试事件监听器</button>
+            <button class="test-btn" onclick="testCurrentFiles()">📁 检查文件状态</button>
+            <button class="test-btn" onclick="clearDebug()">🧹 清空日志</button>
+        </div>
+        
+        <!-- 文件上传区域 -->
+        <div class="upload-card" style="margin: 2rem 0;">
+            <h3>📁 文件上传测试区域</h3>
+            
+            <div class="drag-drop-area" id="drag-drop-area">
+                <div class="upload-icon">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                </div>
+                <p>拖拽文件到此处或点击选择文件</p>
+                <p class="upload-hint">支持所有文件类型（测试用）</p>
+                <input type="file" id="file-input" multiple>
+            </div>
+            
+            <button class="btn btn-primary" onclick="testUpload()" style="margin-top: 1rem;">
+                <i class="fas fa-upload"></i> 测试上传（模拟）
+            </button>
+        </div>
+        
+        <!-- 文件信息显示 -->
+        <div id="file-info" style="background: #f8fafc; padding: 1rem; border-radius: 8px; margin: 1rem 0;">
+            <h4>当前选择的文件：</h4>
+            <div id="file-list">无</div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let currentFiles = [];
+        let debugConsole = document.getElementById('debug-console');
+        
+        // 调试日志函数
+        function debugLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const colors = {
+                info: '#60a5fa',
+                success: '#34d399', 
+                error: '#f87171',
+                warning: '#fbbf24'
+            };
+            
+            debugConsole.innerHTML += `<span style="color: ${colors[type]}">[${timestamp}] ${message}</span><br>`;
+            debugConsole.scrollTop = debugConsole.scrollHeight;
+            console.log(`[DEBUG] ${message}`);
+        }
+        
+        // 测试DOM元素
+        function testElements() {
+            debugLog('🔍 开始检查DOM元素...', 'info');
+            
+            const dragDropArea = document.getElementById('drag-drop-area');
+            const fileInput = document.getElementById('file-input');
+            
+            debugLog(`drag-drop-area: ${!!dragDropArea ? '✅ 找到' : '❌ 未找到'}`, dragDropArea ? 'success' : 'error');
+            debugLog(`file-input: ${!!fileInput ? '✅ 找到' : '❌ 未找到'}`, fileInput ? 'success' : 'error');
+            
+            if (dragDropArea) {
+                debugLog(`拖拽区域可见性: ${dragDropArea.offsetParent !== null ? '✅ 可见' : '❌ 隐藏'}`, dragDropArea.offsetParent !== null ? 'success' : 'warning');
+            }
+            
+            if (fileInput) {
+                debugLog(`文件输入框可见性: ${fileInput.offsetParent !== null ? '✅ 可见' : '❌ 隐藏'}`, fileInput.offsetParent !== null ? 'success' : 'warning');
+            }
+        }
+        
+        // 测试事件监听器
+        function testEventListeners() {
+            debugLog('🎧 开始设置事件监听器...', 'info');
+            setupFileUploadListeners();
+            debugLog('✅ 事件监听器设置完成', 'success');
+        }
+        
+        // 检查文件状态
+        function testCurrentFiles() {
+            debugLog('📁 检查当前文件状态...', 'info');
+            debugLog(`currentFiles类型: ${typeof currentFiles}`, 'info');
+            debugLog(`currentFiles是否为数组: ${Array.isArray(currentFiles)}`, 'info');
+            debugLog(`currentFiles长度: ${currentFiles.length}`, 'info');
+            
+            if (currentFiles.length > 0) {
+                currentFiles.forEach((file, index) => {
+                    debugLog(`文件${index + 1}: ${file.name} (${file.size} bytes)`, 'success');
+                });
+            } else {
+                debugLog('❌ 没有选择任何文件', 'warning');
+            }
+        }
+        
+        // 模拟上传测试
+        function testUpload() {
+            debugLog('🚀 模拟上传测试...', 'info');
+            
+            if (currentFiles.length === 0) {
+                debugLog('❌ 没有文件可上传', 'error');
+                showToast('请先选择文件', 'warning');
+                return;
+            }
+            
+            debugLog(`✅ 发现 ${currentFiles.length} 个文件，开始模拟上传...`, 'success');
+            showToast(`模拟上传 ${currentFiles.length} 个文件成功！`, 'success');
+        }
+        
+        // 清空调试日志
+        function clearDebug() {
+            debugConsole.innerHTML = '[系统] 调试控制台已清空...<br>';
+        }
+        
+        // 文件处理函数
+        function handleFileSelect(files) {
+            debugLog('=== 🎯 handleFileSelect被调用 ===', 'info');
+            debugLog(`传入文件数量: ${files.length}`, 'info');
+            
+            currentFiles = Array.from(files);
+            
+            // 更新文件信息显示
+            const fileList = document.getElementById('file-list');
+            if (currentFiles.length > 0) {
+                fileList.innerHTML = currentFiles.map(file => 
+                    `<div>📄 ${file.name} (${formatFileSize(file.size)})</div>`
+                ).join('');
+                
+                debugLog(`✅ 成功选择 ${currentFiles.length} 个文件`, 'success');
+            } else {
+                fileList.innerHTML = '无';
+                debugLog('❌ 没有有效文件', 'error');
+            }
+        }
+        
+        // 文件大小格式化
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        // Toast提示函数
+        function showToast(message, type = 'info') {
+            let container = document.getElementById('toast-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'toast-container';
+                container.className = 'toast-container';
+                document.body.appendChild(container);
+            }
+            
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>${message}</span>
+                    <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; cursor: pointer; color: #64748b; font-size: 1.2rem; padding: 0 5px;">×</button>
+                </div>
+            `;
+            
+            container.appendChild(toast);
+            debugLog(`📨 Toast消息: ${message}`, 'info');
+            
+            setTimeout(() => {
+                if (toast.parentElement) {
+                    toast.remove();
+                }
+            }, 5000);
+        }
+        
+        // 设置文件上传事件监听器（复制自主文件）
+        function setupFileUploadListeners() {
+            debugLog('=== 设置文件上传事件监听器 ===', 'info');
+            
+            const dragDropArea = document.getElementById('drag-drop-area');
+            const fileInput = document.getElementById('file-input');
+
+            if (!dragDropArea || !fileInput) {
+                debugLog('❌ 文件上传元素未找到!', 'error');
+                return;
+            }
+
+            // 移除旧的事件监听器
+            const newDragDropArea = dragDropArea.cloneNode(true);
+            const newFileInput = newDragDropArea.querySelector('#file-input');
+            dragDropArea.parentNode.replaceChild(newDragDropArea, dragDropArea);
+
+            debugLog('✅ 开始绑定事件监听器...', 'info');
+
+            // 拖拽事件
+            newDragDropArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                newDragDropArea.classList.add('dragover');
+                debugLog('🔄 文件拖拽悬停', 'info');
+            });
+
+            newDragDropArea.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                if (!newDragDropArea.contains(e.relatedTarget)) {
+                    newDragDropArea.classList.remove('dragover');
+                    debugLog('🔄 文件拖拽离开', 'info');
+                }
+            });
+
+            newDragDropArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                newDragDropArea.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                debugLog(`🎯 拖拽放下 ${files.length} 个文件`, 'success');
+                if (files.length > 0) {
+                    handleFileSelect(files);
+                    showToast(`通过拖拽选择了 ${files.length} 个文件`, 'success');
+                }
+            });
+
+            // 点击事件
+            newDragDropArea.addEventListener('click', (e) => {
+                debugLog('🖱️ 点击上传区域', 'info');
+                if (e.target !== newFileInput) {
+                    newFileInput.click();
+                }
+            });
+
+            // 文件选择事件
+            newFileInput.addEventListener('change', (e) => {
+                const files = e.target.files;
+                debugLog(`🎯 文件选择改变: ${files.length} 个文件`, 'success');
+                if (files.length > 0) {
+                    handleFileSelect(files);
+                    showToast(`已选择 ${files.length} 个文件`, 'success');
+                }
+            });
+
+            debugLog('✅ 事件监听器绑定完成', 'success');
+        }
+        
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            debugLog('🚀 页面加载完成，开始初始化...', 'info');
+            testElements();
+            setupFileUploadListeners();
+            debugLog('✅ 初始化完成', 'success');
+        });
+    </script>
+</body>
+</html> 

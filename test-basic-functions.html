@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>基本功能测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f7fa;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .success { background-color: #f0f9ff; border-left: 4px solid #10b981; }
+        .error { background-color: #fef2f2; border-left: 4px solid #ef4444; }
+        .warning { background-color: #fffbeb; border-left: 4px solid #f59e0b; }
+        .info { background-color: #f8fafc; border-left: 4px solid #6366f1; }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #2563eb; }
+        #console {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 医学AI Agent - 基本功能测试</h1>
+        
+        <div class="test-section">
+            <h3>🔗 API连接测试</h3>
+            <button onclick="testAPIConnection()">测试API连接</button>
+            <div id="api-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>📊 知识库状态测试</h3>
+            <button onclick="testKnowledgeBaseStatus()">测试知识库状态</button>
+            <div id="kb-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>📁 文件列表测试</h3>
+            <button onclick="testFileList()">获取文件列表</button>
+            <div id="files-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>🔍 文件详情测试</h3>
+            <input type="text" id="test-filename" placeholder="输入文件名（如：test.csv）" style="padding: 8px; width: 300px; margin-right: 10px;">
+            <button onclick="testFileDetails()">测试文件详情</button>
+            <div id="details-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>🎯 LLM对话测试</h3>
+            <input type="text" id="test-message" placeholder="输入测试消息" style="padding: 8px; width: 300px; margin-right: 10px;">
+            <button onclick="testLLMChat()">测试LLM对话</button>
+            <div id="chat-result"></div>
+        </div>
+
+        <div id="console"></div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:8000';
+        let consoleDiv = document.getElementById('console');
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const colors = {
+                info: '#60a5fa',
+                success: '#10b981', 
+                error: '#ef4444',
+                warning: '#f59e0b'
+            };
+            
+            consoleDiv.innerHTML += `<span style="color: ${colors[type]}">[${timestamp}] ${message}</span><br>`;
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        function showResult(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="test-result ${type}">${message}</div>`;
+        }
+
+        async function testAPIConnection() {
+            log('🔗 开始测试API连接...', 'info');
+            showResult('api-result', '测试中...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/health`, { timeout: 5000 });
+                if (response.ok) {
+                    const data = await response.json();
+                    log('✅ API连接成功', 'success');
+                    showResult('api-result', `✅ API连接正常<br>状态: ${data.status}<br>时间: ${data.timestamp}`, 'success');
+                } else {
+                    log(`❌ API连接失败: HTTP ${response.status}`, 'error');
+                    showResult('api-result', `❌ HTTP ${response.status}: ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                log(`💥 API连接异常: ${error.message}`, 'error');
+                showResult('api-result', `❌ 连接失败: ${error.message}<br><br>请检查：<br>• 后端服务是否启动<br>• 端口8000是否开放<br>• 防火墙设置`, 'error');
+            }
+        }
+
+        async function testKnowledgeBaseStatus() {
+            log('📊 开始测试知识库状态...', 'info');
+            showResult('kb-result', '测试中...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/knowledge/stats`);
+                if (response.ok) {
+                    const data = await response.json();
+                    log('✅ 知识库状态获取成功', 'success');
+                    
+                    let statsHtml = '✅ 知识库状态正常<br><br>';
+                    if (data.stats) {
+                        const total = Object.values(data.stats).reduce((sum, stat) => sum + (stat.document_count || 0), 0);
+                        statsHtml += `📚 总文档数: ${total}<br>`;
+                        
+                        Object.entries(data.stats).forEach(([type, stat]) => {
+                            statsHtml += `• ${type}: ${stat.document_count || 0} 个文档<br>`;
+                        });
+                    }
+                    
+                    showResult('kb-result', statsHtml, 'success');
+                } else {
+                    log(`❌ 知识库状态获取失败: HTTP ${response.status}`, 'error');
+                    showResult('kb-result', `❌ HTTP ${response.status}: ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                log(`💥 知识库状态测试异常: ${error.message}`, 'error');
+                showResult('kb-result', `❌ 测试失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function testFileList() {
+            log('📁 开始测试文件列表...', 'info');
+            showResult('files-result', '测试中...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/knowledge/files`);
+                if (response.ok) {
+                    const data = await response.json();
+                    log('✅ 文件列表获取成功', 'success');
+                    
+                    if (data.success && data.files) {
+                        let filesHtml = `✅ 文件列表获取成功<br><br>📁 共 ${data.files.length} 个文件:<br><br>`;
+                        
+                        data.files.slice(0, 10).forEach(file => {
+                            filesHtml += `• ${file.filename} (${(file.size/1024).toFixed(1)} KB)<br>`;
+                        });
+                        
+                        if (data.files.length > 10) {
+                            filesHtml += `... 还有 ${data.files.length - 10} 个文件`;
+                        }
+                        
+                        showResult('files-result', filesHtml, 'success');
+                    } else {
+                        showResult('files-result', '❌ 文件列表数据格式异常', 'error');
+                    }
+                } else {
+                    log(`❌ 文件列表获取失败: HTTP ${response.status}`, 'error');
+                    showResult('files-result', `❌ HTTP ${response.status}: ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                log(`💥 文件列表测试异常: ${error.message}`, 'error');
+                showResult('files-result', `❌ 测试失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function testFileDetails() {
+            const filename = document.getElementById('test-filename').value.trim();
+            if (!filename) {
+                showResult('details-result', '❌ 请输入文件名', 'warning');
+                return;
+            }
+            
+            log(`🔍 开始测试文件详情: ${filename}`, 'info');
+            showResult('details-result', '测试中...', 'info');
+            
+            try {
+                const encodedFilename = encodeURIComponent(filename);
+                const response = await fetch(`${API_BASE_URL}/knowledge/file/${encodedFilename}/details`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    log('✅ 文件详情获取成功', 'success');
+                    
+                    if (data.success) {
+                        const stats = data.file_stats || {};
+                        const embeddingInfo = data.embedding_info || {};
+                        
+                        let detailsHtml = `
+                            ✅ 文件详情获取成功<br><br>
+                            📁 文件名: ${data.filename}<br>
+                            📏 原始大小: ${stats.original_size || 0} 字符<br>
+                            🧩 分块数量: ${stats.chunks_count || 0}<br>
+                            📊 知识库类型数: ${stats.knowledge_types || 0}<br>
+                            🔗 向量维度: ${embeddingInfo.embedding_dimensions || 'N/A'}<br>
+                            📈 平均块长度: ${Math.round(embeddingInfo.avg_chunk_length || 0)} 字符
+                        `;
+                        
+                        if (data.chunks && data.chunks.length > 0) {
+                            detailsHtml += `<br><br>📚 前3个分块预览:<br>`;
+                            data.chunks.slice(0, 3).forEach((chunk, i) => {
+                                const preview = chunk.content.substring(0, 50) + '...';
+                                detailsHtml += `${i+1}. [${chunk.knowledge_type}] ${preview}<br>`;
+                            });
+                        }
+                        
+                        showResult('details-result', detailsHtml, 'success');
+                    } else {
+                        showResult('details-result', `❌ API返回失败: ${data.error}`, 'error');
+                    }
+                } else {
+                    const errorText = await response.text();
+                    log(`❌ 文件详情错误响应: ${errorText}`, 'error');
+                    showResult('details-result', `❌ HTTP ${response.status}: ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                log(`💥 文件详情测试异常: ${error.message}`, 'error');
+                showResult('details-result', `❌ 测试失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function testLLMChat() {
+            const message = document.getElementById('test-message').value.trim();
+            if (!message) {
+                showResult('chat-result', '❌ 请输入测试消息', 'warning');
+                return;
+            }
+            
+            log(`🎯 开始测试LLM对话: ${message}`, 'info');
+            showResult('chat-result', '测试中...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        conversation_id: 'test-' + Date.now()
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    log('✅ LLM对话测试成功', 'success');
+                    
+                    if (data.success) {
+                        const reply = data.response || data.reply || '无回复内容';
+                        showResult('chat-result', `✅ LLM响应成功<br><br>🤖 回复: ${reply.substring(0, 200)}${reply.length > 200 ? '...' : ''}`, 'success');
+                    } else {
+                        showResult('chat-result', `❌ LLM响应失败: ${data.error}`, 'error');
+                    }
+                } else {
+                    log(`❌ LLM对话失败: HTTP ${response.status}`, 'error');
+                    showResult('chat-result', `❌ HTTP ${response.status}: ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                log(`💥 LLM对话测试异常: ${error.message}`, 'error');
+                showResult('chat-result', `❌ 测试失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 页面加载完成后自动测试API连接
+        document.addEventListener('DOMContentLoaded', function() {
+            log('🚀 基本功能测试页面加载完成', 'info');
+            log('💡 建议先测试API连接，确认后端服务正常运行', 'info');
+        });
+    </script>
+</body>
+</html>
