@@ -11,8 +11,9 @@ from pathlib import Path
 
 # 配置
 PORT = 3000
-# 前端静态文件所在目录
+
 FRONTEND_DIR = Path(__file__).resolve().parent
+
 
 # 自定义处理器，设置正确的MIME类型
 class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
