@@ -667,6 +667,7 @@ window.testLLMConnection = async function() {
         showToast('LLM连接测试失败: ' + error.message, 'error');
     } finally {
         showSystemPrompt('');
+        hideLoading();
     }
 };
 
