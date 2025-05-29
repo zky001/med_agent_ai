@@ -907,9 +907,9 @@ window.sendMessage = async function() {
     
     // 显示正在输入状态
     const typingIndicator = addChatMessage('assistant', '正在思考中...', true);
-    
+
     try {
-        const response = await fetch(`${API_BASE_URL}/chat`, {
+        const response = await fetch(`${API_BASE_URL}/chat_stream`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -919,27 +919,43 @@ window.sendMessage = async function() {
                 temperature: parseFloat(document.getElementById('chat-temp')?.value || '0.3')
             })
         });
-        
-        const result = await response.json();
-        
-        // 移除正在输入指示器
-        if (typingIndicator && typingIndicator.parentNode) {
-            typingIndicator.parentNode.removeChild(typingIndicator);
+
+        if (!response.ok || !response.body) {
+            throw new Error('网络请求失败');
         }
-        
-        if (result.success) {
-            addChatMessage('assistant', result.response);
-            updateChatStats();
-        } else {
-            addChatMessage('assistant', '抱歉，我遇到了一些问题：' + result.message);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+        const textEl = typingIndicator.querySelector('.message-text');
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split('\n\n');
+            buffer = parts.pop();
+            for (const part of parts) {
+                if (part.startsWith('data: ')) {
+                    const data = JSON.parse(part.slice(6));
+                    if (data.content) {
+                        textEl.textContent += data.content;
+                        textEl.innerHTML = escapeHtml(textEl.textContent).replace(/\n/g, '<br>');
+                    }
+                    if (data.done) {
+                        typingIndicator.classList.remove('temporary');
+                    }
+                }
+            }
         }
-        
+
+        updateChatStats();
+
     } catch (error) {
-        // 移除正在输入指示器
         if (typingIndicator && typingIndicator.parentNode) {
             typingIndicator.parentNode.removeChild(typingIndicator);
         }
-        
+
         addChatMessage('assistant', '抱歉，网络连接出现问题：' + error.message);
     }
 };
@@ -1144,14 +1160,39 @@ function switchGenerationStep(stepNumber) {
 
 function fillExtractedInfo(info) {
     const container = document.getElementById('extracted-info-grid');
-    if (!container) return;
-    
-    container.innerHTML = Object.entries(info).map(([key, value]) => `
+    const extraContainer = document.getElementById('additional-info-container');
+    const extraInput = document.getElementById('additional-info');
+    if (!container || !extraInput || !extraContainer) return;
+
+    // 拆分前三项与其余信息
+    const entries = Object.entries(info).filter(([k]) => k !== 'speculated' && k !== '_speculated');
+    const mainEntries = entries.slice(0, 3);
+    const extraEntries = entries.slice(3);
+
+    // 渲染前三项
+    container.innerHTML = mainEntries.map(([key, value]) => `
         <div class="info-item">
             <label>${formatFieldName(key)}:</label>
             <input type="text" value="${escapeHtml(value)}" data-field="${key}">
         </div>
     `).join('');
+
+    // 处理附加信息
+    if (extraEntries.length) {
+        extraContainer.style.display = 'block';
+        extraInput.value = extraEntries.map(([k, v]) => `${formatFieldName(k)}: ${v}`).join('\n');
+    } else {
+        extraContainer.style.display = 'none';
+        extraInput.value = '';
+    }
+
+    // 根据推测标记显示颜色
+    const speculated = info.speculated || info._speculated;
+    if (speculated) {
+        extraInput.classList.add('speculated');
+    } else {
+        extraInput.classList.remove('speculated');
+    }
 }
 
 function formatFieldName(fieldName) {
@@ -1434,17 +1475,38 @@ window.backToStep = function(stepNumber) {
 // 填充提取的信息到确认界面
 function fillExtractedInfo(info) {
     const container = document.getElementById('extracted-info-grid');
-    if (!container) {
-        console.error('找不到 extracted-info-grid 元素');
+    const extraContainer = document.getElementById('additional-info-container');
+    const extraInput = document.getElementById('additional-info');
+    if (!container || !extraInput || !extraContainer) {
+        console.error('找不到信息展示区域');
         return;
     }
-    
-    container.innerHTML = Object.entries(info).map(([key, value]) => `
+
+    const entries = Object.entries(info).filter(([k]) => k !== 'speculated' && k !== '_speculated');
+    const mainEntries = entries.slice(0, 3);
+    const extraEntries = entries.slice(3);
+
+    container.innerHTML = mainEntries.map(([key, value]) => `
         <div class="info-item">
             <label for="field-${key}">${formatFieldName(key)}</label>
             <input type="text" id="field-${key}" value="${escapeHtml(value)}" data-field="${key}">
         </div>
     `).join('');
+
+    if (extraEntries.length) {
+        extraContainer.style.display = 'block';
+        extraInput.value = extraEntries.map(([k, v]) => `${formatFieldName(k)}: ${v}`).join('\n');
+    } else {
+        extraContainer.style.display = 'none';
+        extraInput.value = '';
+    }
+
+    const speculated = info.speculated || info._speculated;
+    if (speculated) {
+        extraInput.classList.add('speculated');
+    } else {
+        extraInput.classList.remove('speculated');
+    }
 }
 
 // 格式化字段名称
