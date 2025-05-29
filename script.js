@@ -622,6 +622,20 @@ function hideLoading() {
     }
 }
 
+// 在右侧显示系统提示词
+function showSystemPrompt(text) {
+    const promptEl = document.getElementById('prompt-viewer');
+    if (promptEl) {
+        if (text) {
+            promptEl.style.display = 'block';
+            promptEl.textContent = text;
+        } else {
+            promptEl.style.display = 'none';
+            promptEl.textContent = '';
+        }
+    }
+}
+
 // 格式化函数
 function formatFileSize(bytes) {
     if (bytes === 0) return '0 Bytes';
@@ -652,7 +666,7 @@ window.testLLMConnection = async function() {
     } catch (error) {
         showToast('LLM连接测试失败: ' + error.message, 'error');
     } finally {
-        hideLoading();
+        showSystemPrompt('');
     }
 };
 
@@ -942,6 +956,9 @@ window.sendMessage = async function() {
                 if (line.startsWith('data: ')) {
                     try {
                         const data = JSON.parse(line.slice(6));
+                        if (data.prompt) {
+                            showSystemPrompt(data.prompt);
+                        }
 
                         if (data.error) {
                             throw new Error(data.error);
@@ -1633,7 +1650,7 @@ window.startStepwiseGeneration = async function() {
     if (welcomeSection) welcomeSection.style.display = 'none';
     if (contentContainer) {
         contentContainer.style.display = 'block';
-        contentContainer.innerHTML = '<div class="content-viewer"><div id="streaming-content"></div></div>';
+        contentContainer.innerHTML = '<div class="content-viewer"><div class="prompt-viewer" id="prompt-viewer"></div><div id="streaming-content"></div></div>';
     }
 
     renderModuleControls();
@@ -1682,6 +1699,7 @@ async function generateCurrentSection() {
     const streamingContent = document.getElementById('streaming-content');
     const btn = document.getElementById('generate-section-btn');
     btn.disabled = true;
+    resetLiveContent();
 
     try {
         const response = await fetch(`${API_BASE_URL}/generate_section_stream`, {
@@ -1700,7 +1718,6 @@ async function generateCurrentSection() {
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        let accumulated = '';
 
         while (true) {
             const { value, done } = await reader.read();
@@ -1709,16 +1726,18 @@ async function generateCurrentSection() {
             chunk.split('\n').forEach(line => {
                 if (line.startsWith('data: ')) {
                     const data = JSON.parse(line.slice(6));
-                    if (data.error) throw new Error(data.error);
-                    if (data.content) {
-                        accumulated += data.content;
+                    if (data.type === 'system_prompt') {
+                        showSystemPrompt(data.content);
+                    } else if (data.type === 'section_start') {
+                        if (streamingContent) streamingContent.innerHTML += escapeHtml(data.content);
+                    } else if (data.type === 'content') {
                         smartGenerationState.content += data.content;
                         if (marked) {
                             streamingContent.innerHTML += marked.parse(data.content);
-                        } else {
+                        } else if (streamingContent) {
                             streamingContent.innerHTML += data.content.replace(/\n/g, '<br>');
                         }
-                        streamingContent.scrollTop = streamingContent.scrollHeight;
+                        if (streamingContent) streamingContent.scrollTop = streamingContent.scrollHeight;
                     }
                 }
             });
@@ -1805,11 +1824,25 @@ function updateGenerationMonitor(currentModule, completed, total) {
 function updateContentDisplay(content) {
     const contentContainer = document.querySelector('.right-panel .content-container');
     if (!contentContainer) return;
-    
+
     contentContainer.innerHTML = `<div class="content-viewer">${content}</div>`;
-    
+
     // 滚动到底部
     contentContainer.scrollTop = contentContainer.scrollHeight;
+}
+
+function showSystemPrompt(text) {
+    const promptEl = document.getElementById('prompt-viewer');
+    if (promptEl) {
+        promptEl.textContent = text;
+        promptEl.style.display = text ? 'block' : 'none';
+    }
+}
+
+function resetLiveContent() {
+    const streaming = document.getElementById('streaming-content');
+    if (streaming) streaming.innerHTML = '';
+    showSystemPrompt('');
 }
 
 // 生成模拟内容
@@ -2259,14 +2292,19 @@ console.log('=== 智能生成步骤导航系统已加载 ===');
 window.extractKeyInfo = async function() {
     const textarea = document.getElementById('smart-requirement-input');
     const inputText = textarea?.value?.trim();
-    
+
     if (!inputText) {
         showToast('请先输入研究需求', 'warning');
         return;
     }
-    
-    showLoading('正在调用AI模型提取关键信息...');
-    
+
+    const container = document.querySelector('.right-panel .content-container');
+    if (container) {
+        container.style.display = 'block';
+        container.innerHTML = '<div class="content-viewer"><div class="prompt-viewer" id="prompt-viewer"></div><div id="streaming-content"></div></div>';
+    }
+    resetLiveContent();
+
     try {
         console.log('📤 发送请求到真实API:', inputText);
         
@@ -2339,19 +2377,11 @@ window.extractKeyInfo = async function() {
         } else if (error.message.includes('404')) {
             errorMessage += 'API端点未找到，请检查后端服务版本';
         } else {
-            errorMessage += error.message;
+            showToast('信息提取失败', 'error');
         }
-        
-        showToast(errorMessage, 'error');
-        
-        // 可选：显示错误详情的调试信息
-        console.log('🔍 调试信息:');
-        console.log('- API_BASE_URL:', API_BASE_URL);
-        console.log('- 输入文本长度:', inputText.length);
-        console.log('- 错误对象:', error);
-        
-    } finally {
-        hideLoading();
+    } catch (error) {
+        console.error('❌ 提取关键信息失败:', error);
+        showToast('提取关键信息失败: ' + error.message, 'error');
     }
 };
 
@@ -2457,7 +2487,7 @@ window.proceedToOutline = async function() {
         showToast(errorMessage, 'error');
         
     } finally {
-        hideLoading();
+        showSystemPrompt('');
     }
 };
 
@@ -2504,6 +2534,7 @@ async function startRealStreamGeneration() {
     // 初始化内容显示
     contentContainer.innerHTML = `
         <div class="content-viewer">
+            <div class="prompt-viewer" id="prompt-viewer"></div>
             <div id="streaming-content"></div>
             <div id="generation-progress" class="generation-progress">
                 <div class="progress-bar">
