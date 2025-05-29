@@ -5,8 +5,8 @@ const API_BASE_URL = 'http://localhost:8000';
 let currentConfig = {
     llm: {
         type: 'local',
-        url: 'http://192.168.22.191:8000/v1',
-        model: '/home/aiteam/.cache/modelscope/hub/models/google/medgemma-27b-text-it/',
+        url: 'https://v1.voct.top/v1',
+        model: 'gpt-4.1-mini',
         key: 'EMPTY',
         temperature: 0.3
     },
@@ -682,8 +682,8 @@ window.resetConfiguration = function() {
     currentConfig = {
         llm: {
             type: 'local',
-            url: 'http://192.168.22.191:8000/v1',
-            model: '/home/aiteam/.cache/modelscope/hub/models/google/medgemma-27b-text-it/',
+            url: 'https://v1.voct.top/v1',
+            model: 'gpt-4.1-mini',
             key: 'EMPTY',
             temperature: 0.3
         },
@@ -1479,6 +1479,17 @@ function formatFieldName(fieldName) {
         primary_endpoint: '主要终点',
         study_phase: '研究阶段',
         estimated_enrollment: '预计入组'
+    };
+    return nameMap[fieldName] || fieldName;
+}
+
+// 渲染协议大纲编辑器
+function fillOutlineEditor(outline) {
+    const editor = document.getElementById('outline-editor');
+    if (!editor) return;
+
+    editor.innerHTML = `
+        <div class="outline-list">
             ${outline.map((section, index) => createOutlineItemHTML(section, index)).join('')}
         </div>
         <div class="outline-actions-bottom">
