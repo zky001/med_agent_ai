@@ -142,6 +142,7 @@ current_config = {
         "key": "EMPTY",
         "temperature": 0.3
     },
+
     "embedding": {
         "type": "local-api",
         "url": "http://192.168.196.151:9998/v1",
@@ -350,6 +351,102 @@ def call_local_llm_stream(message: str, system_prompt: str = None, temperature: 
         logger.error(f"LLM流式调用失败: {e}")
         raise
 
+def call_local_llm_stream(message: str, system_prompt: str = None, temperature: float = 0.3):
+    """流式调用本地LLM模型，直接转发生成的token"""
+    headers = {
+        "Authorization": f"Bearer {current_config['llm']['key']}",
+        "Content-Type": "application/json"
+    }
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": message})
+
+    data = {
+        "model": current_config["llm"]["model"],
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": 2000,
+        "stream": True
+    }
+
+    try:
+        with requests.post(
+            f"{current_config['llm']['url']}/chat/completions",
+            headers=headers,
+            json=data,
+            stream=True,
+            timeout=60
+        ) as r:
+            if r.status_code != 200:
+                raise ValueError(f"API调用失败: {r.status_code} - {r.text}")
+
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                if line.startswith(b'data:'):
+                    payload = line[5:].strip()
+                    if payload == b"[DONE]":
+                        break
+                    try:
+                        event = json.loads(payload.decode())
+                        delta = event.get("choices", [{}])[0].get("delta", {}).get("content")
+                        if delta:
+                            yield delta
+                    except json.JSONDecodeError:
+                        continue
+    except Exception as e:
+        logger.error(f"LLM流式调用失败: {e}")
+        raise
+
+def call_local_llm_stream(message: str, temperature: float = 0.3):
+    """以流式方式调用本地LLM模型，逐步返回内容"""
+    headers = {
+        "Authorization": f"Bearer {current_config['llm']['key']}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "model": current_config["llm"]["model"],
+        "messages": [
+            {"role": "system", "content": "你是一个专业的医学AI助手，专门帮助用户处理临床试验方案相关的问题。请用中文回复。"},
+            {"role": "user", "content": message}
+        ],
+        "temperature": temperature,
+        "max_tokens": 1000,
+        "stream": True
+    }
+
+    try:
+        with requests.post(
+            f"{current_config['llm']['url']}/chat/completions",
+            headers=headers,
+            json=data,
+            stream=True,
+            timeout=60
+        ) as r:
+            if r.status_code != 200:
+                raise ValueError(f"API调用失败: {r.status_code} - {r.text}")
+
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                if line.startswith(b'data:'):
+                    payload = line[5:].strip()
+                    if payload == b"[DONE]":
+                        break
+                    try:
+                        event = json.loads(payload.decode())
+                        delta = event.get("choices", [{}])[0].get("delta", {}).get("content")
+                        if delta:
+                            yield delta
+                    except json.JSONDecodeError:
+                        continue
+    except Exception as e:
+        logger.error(f"LLM流式调用失败: {e}")
+        raise
+
 @app.get("/")
 async def root():
     """根路径，返回API信息"""
@@ -447,6 +544,7 @@ async def chat_with_llm_stream(request: ChatRequest):
             "Access-Control-Allow-Origin": "*"
         }
     )
+
 
 @app.post("/test/embedding")
 async def test_embedding_model():
@@ -1450,7 +1548,8 @@ async def extract_key_info(request: KeyInfoExtractionRequest):
             "success": True,
             "extracted_info": extracted_info,
             "original_response": response,
-            "extraction_quality": validate_extraction_quality(extracted_info)
+            "extraction_quality": validate_extraction_quality(extracted_info),
+            "prompt": extraction_prompt
         }
         
     except Exception as e:
@@ -1532,6 +1631,76 @@ async def extract_key_info_stream(request: KeyInfoExtractionRequest):
             "Access-Control-Allow-Origin": "*"
         }
     )
+
+
+@app.post("/extract_key_info_stream")
+async def extract_key_info_stream(request: KeyInfoExtractionRequest):
+    """步骤1：流式提取关键信息并返回系统提示词"""
+    from fastapi.responses import StreamingResponse
+    import asyncio
+
+    async def generate():
+        try:
+            system_prompt = "你是一位专业的临床试验方案专家。请从用户输入中提取临床试验方案的关键信息。"
+            extraction_prompt = f"""
+请从以下文本中提取临床试验方案的关键信息，并以JSON格式返回。
+
+输入文本：
+{request.input_text}
+
+请提取以下关键信息：
+1. drug_type（药物类型）
+2. disease（目标疾病）
+3. trial_phase（试验分期）
+4. primary_objective（主要目的）
+5. primary_endpoint（主要终点）
+6. secondary_endpoints（次要终点）
+7. patient_population（目标人群）
+8. estimated_enrollment（预计入组）
+9. study_design（研究设计）
+10. treatment_line（治疗线数）
+
+返回纯JSON格式，不要有其他文字。
+"""
+
+            yield f"data: {json.dumps({'type': 'system_prompt', 'content': extraction_prompt})}\n\n"
+            await asyncio.sleep(0.1)
+
+            accumulated = ""
+            for token in call_local_llm_stream(extraction_prompt, system_prompt, 0.1):
+                accumulated += token
+                yield f"data: {json.dumps({'type': 'content', 'content': token})}\n\n"
+                await asyncio.sleep(0.02)
+
+            try:
+                import re
+                match = re.search(r'\{.*?\}', accumulated, re.DOTALL)
+                if match:
+                    info = json.loads(match.group())
+                else:
+                    info = {
+                        "drug_type": "待确定",
+                        "disease": "待确定",
+                        "trial_phase": "I期",
+                        "primary_objective": "评估安全性和耐受性",
+                        "primary_endpoint": "DLT/MTD",
+                        "secondary_endpoints": ["ORR", "PFS"],
+                        "patient_population": "待确定",
+                        "estimated_enrollment": "20-30例",
+                        "study_design": "开放标签、剂量递增研究",
+                        "treatment_line": "待确定"
+                    }
+                yield f"data: {json.dumps({'type': 'extracted_info', 'content': info})}\n\n"
+            except Exception as e:
+                logger.error(f"JSON解析失败: {e}")
+                yield f"data: {json.dumps({'type': 'error', 'content': '信息解析失败'})}\n\n"
+
+            yield f"data: {json.dumps({'type': 'done', 'content': ''})}\n\n"
+        except Exception as e:
+            logger.error(f"流式提取失败: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "Access-Control-Allow-Origin": "*"})
 
 def validate_extraction_quality(info):
     """验证提取信息的质量"""
@@ -1664,7 +1833,8 @@ async def generate_outline(request: OutlineGenerationRequest):
         return {
             "success": True,
             "outline": outline,
-            "original_response": response
+            "original_response": response,
+            "prompt": outline_prompt
         }
         
     except Exception as e:
@@ -1728,6 +1898,58 @@ async def generate_outline_stream(request: OutlineGenerationRequest):
             "Access-Control-Allow-Origin": "*"
         }
     )
+
+
+@app.post("/generate_outline_stream")
+async def generate_outline_stream(request: OutlineGenerationRequest):
+    """步骤2：流式生成协议大纲"""
+    from fastapi.responses import StreamingResponse
+    import asyncio
+
+    async def generate():
+        try:
+            system_prompt = "你是一位临床试验方案撰写专家。请生成符合ICH-GCP标准的临床试验方案章节目录。"
+            outline_prompt = f"""
+基于以下确认的临床试验信息，生成一个完整的临床试验方案大纲：
+
+确认信息：
+{json.dumps(request.confirmed_info, ensure_ascii=False, indent=2)}
+
+请生成标准的临床试验方案章节目录，要求：
+1. 共10个主要章节
+2. 每个章节下有3-5个子章节
+3. 只返回章节标题，不要描述内容
+4. 返回JSON数组格式
+"""
+
+            yield f"data: {json.dumps({'type': 'system_prompt', 'content': outline_prompt})}\n\n"
+            await asyncio.sleep(0.1)
+
+            accumulated = ""
+            for token in call_local_llm_stream(outline_prompt, system_prompt, 0.2):
+                accumulated += token
+                yield f"data: {json.dumps({'type': 'content', 'content': token})}\n\n"
+                await asyncio.sleep(0.02)
+
+            try:
+                import re
+                match = re.search(r'\[.*?\]', accumulated, re.DOTALL)
+                if match:
+                    outline = json.loads(match.group())
+                else:
+                    outline = get_standard_outline_template(request.confirmed_info)
+                yield f"data: {json.dumps({'type': 'outline', 'content': outline})}\n\n"
+            except Exception as e:
+                logger.error(f"大纲解析失败: {e}")
+                outline = get_standard_outline_template(request.confirmed_info)
+                yield f"data: {json.dumps({'type': 'outline', 'content': outline})}\n\n"
+
+            yield f"data: {json.dumps({'type': 'done', 'content': ''})}\n\n"
+        except Exception as e:
+            logger.error(f"大纲生成失败: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "Access-Control-Allow-Origin": "*"})
 
 def get_standard_protocol_outline(confirmed_info):
     """获取标准的临床试验方案大纲模板"""
@@ -2009,20 +2231,24 @@ async def generate_protocol_stream(request: ProtocolStreamRequest):
                     relevant_knowledge[:3]
                 )
                 
-                # 调用LLM生成该模块内容
-                module_content = call_local_llm(module_prompt, temperature=0.3)
-                
-                # 流式输出
-                chunk_data = {
-                    "content": f"\n## {section['title']}\n\n{module_content}\n",
+                # 调用LLM生成该模块内容并实时流式输出
+                section_header = f"\n## {section['title']}\n\n"
+                yield f"data: {json.dumps({'content': section_header, 'current_module': section['title'], 'done': False})}\n\n"
+                module_text = ""
+                for token in call_local_llm_stream(module_prompt, temperature=0.3):
+                    module_text += token
+                    yield f"data: {json.dumps({'content': token, 'current_module': section['title'], 'done': False})}\n\n"
+                    await asyncio.sleep(0.02)
+
+                full_content += section_header + module_text + "\n"
+
+                progress_data = {
+                    "content": "",
                     "progress": (idx + 1) / total_sections,
                     "current_module": section['title'],
                     "done": False
                 }
-                yield f"data: {json.dumps(chunk_data)}\n\n"
-                
-                full_content += chunk_data["content"]
-                await asyncio.sleep(0.1)  # 给前端时间渲染
+                yield f"data: {json.dumps(progress_data)}\n\n"
             
             # 3. 质量检查（如果启用）
             if request.settings.get('include_quality_check', True):
