@@ -16,7 +16,6 @@ import shutil
 from pathlib import Path
 import numpy as np
 import chardet
-#!/usr/bin/env python3
 import logging
 import sys
 from datetime import datetime
