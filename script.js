@@ -5,8 +5,8 @@ const API_BASE_URL = 'http://localhost:8000';
 let currentConfig = {
     llm: {
         type: 'local',
-        url: 'http://192.168.22.191:8000/v1',
-        model: '/home/aiteam/.cache/modelscope/hub/models/google/medgemma-27b-text-it/',
+        url: 'https://v1.voct.top/v1',
+        model: 'gpt-4.1-mini',
         key: 'EMPTY',
         temperature: 0.3
     },
@@ -682,8 +682,8 @@ window.resetConfiguration = function() {
     currentConfig = {
         llm: {
             type: 'local',
-            url: 'http://192.168.22.191:8000/v1',
-            model: '/home/aiteam/.cache/modelscope/hub/models/google/medgemma-27b-text-it/',
+            url: 'https://v1.voct.top/v1',
+            model: 'gpt-4.1-mini',
             key: 'EMPTY',
             temperature: 0.3
         },
@@ -1479,6 +1479,17 @@ function formatFieldName(fieldName) {
         primary_endpoint: '主要终点',
         study_phase: '研究阶段',
         estimated_enrollment: '预计入组'
+    };
+    return nameMap[fieldName] || fieldName;
+}
+
+// 渲染协议大纲编辑器
+function fillOutlineEditor(outline) {
+    const editor = document.getElementById('outline-editor');
+    if (!editor) return;
+
+    editor.innerHTML = `
+        <div class="outline-list">
             ${outline.map((section, index) => createOutlineItemHTML(section, index)).join('')}
         </div>
         <div class="outline-actions-bottom">
@@ -2259,8 +2270,8 @@ window.extractKeyInfo = async function() {
     try {
         console.log('📤 发送请求到真实API:', inputText);
         
-        // 调用真实的后端API
-        const response = await fetch(`${API_BASE_URL}/extract_key_info`, {
+        // 调用真实的后端API (流式)
+        const response = await fetch(`${API_BASE_URL}/extract_key_info_stream`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -2277,29 +2288,43 @@ window.extractKeyInfo = async function() {
             throw new Error(`API调用失败 (${response.status}): ${errorText}`);
         }
         
-        const data = await response.json();
-        console.log('📥 API返回数据:', data);
-        
-        if (!data.success) {
-            throw new Error(data.message || '信息提取失败');
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        const contentContainer = document.getElementById('live-content-container');
+        if (contentContainer) {
+            contentContainer.innerHTML = '<pre id="system-prompt"></pre><pre id="extract-content"></pre>';
         }
-        
-        // 存储提取的信息
-        smartGenerationState.extractedInfo = data.extracted_info;
-        
-        // 填充确认信息界面
-        fillExtractedInfo(data.extracted_info);
-        
-        // 切换到步骤2
-        switchGenerationStep(2);
-        
-        // 显示成功消息，包含AI原始响应的预览
-        const originalPreview = data.original_response ? 
-            (data.original_response.length > 100 ? 
-                data.original_response.substring(0, 100) + '...' : 
-                data.original_response) : '';
-        
-        showToast(`✅ AI成功提取了关键信息！<br><small>AI响应: ${originalPreview}</small>`, 'success');
+        const promptEl = document.getElementById('system-prompt');
+        const contentEl = document.getElementById('extract-content');
+        let accumulated = '';
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const data = JSON.parse(line.slice(6));
+                    if (data.type === 'system_prompt') {
+                        if (promptEl) promptEl.textContent = data.content;
+                    } else if (data.type === 'content') {
+                        accumulated += data.content;
+                        if (contentEl) contentEl.textContent += data.content;
+                    } else if (data.type === 'extracted_info') {
+                        smartGenerationState.extractedInfo = data.content;
+                        fillExtractedInfo(data.content);
+                        switchGenerationStep(2);
+                    } else if (data.type === 'error') {
+                        throw new Error(data.content);
+                    }
+                }
+            }
+        }
+
+        showToast('✅ AI成功提取了关键信息！', 'success');
         
     } catch (error) {
         console.error('❌ 提取关键信息失败:', error);
@@ -2358,8 +2383,8 @@ window.proceedToOutline = async function() {
         // 显示加载状态
         showLoading('正在调用AI模型生成协议大纲...');
         
-        // 调用真实的后端API生成大纲
-        const response = await fetch(`${API_BASE_URL}/generate_outline`, {
+        // 调用真实的后端API生成大纲（流式）
+        const response = await fetch(`${API_BASE_URL}/generate_outline_stream`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -2377,27 +2402,43 @@ window.proceedToOutline = async function() {
             throw new Error(`API调用失败 (${response.status}): ${errorText}`);
         }
         
-        const data = await response.json();
-        console.log('📥 大纲生成API返回数据:', data);
-        
-        if (!data.success) {
-            throw new Error(data.message || '大纲生成失败');
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        const contentContainer = document.getElementById('live-content-container');
+        if (contentContainer) {
+            contentContainer.innerHTML = '<pre id="outline-prompt"></pre><pre id="outline-content"></pre>';
         }
-        
-        smartGenerationState.generatedOutline = data.outline;
-        
-        // 填充大纲界面
-        fillOutlineEditor(data.outline);
-        
-        // 切换到步骤3
-        switchGenerationStep(3);
-        
-        // 显示成功消息
-        const outlinePreview = data.outline.length > 0 ? 
-            `生成了${data.outline.length}个章节: ${data.outline[0].title}等` : 
-            '大纲生成完成';
-        
-        showToast(`✅ AI成功生成了协议大纲！<br><small>${outlinePreview}</small>`, 'success');
+        const promptEl = document.getElementById('outline-prompt');
+        const contentEl = document.getElementById('outline-content');
+        let accumulated = '';
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const data = JSON.parse(line.slice(6));
+                    if (data.type === 'system_prompt') {
+                        if (promptEl) promptEl.textContent = data.content;
+                    } else if (data.type === 'content') {
+                        accumulated += data.content;
+                        if (contentEl) contentEl.textContent += data.content;
+                    } else if (data.type === 'outline') {
+                        smartGenerationState.generatedOutline = data.content;
+                        fillOutlineEditor(data.content);
+                        switchGenerationStep(3);
+                    } else if (data.type === 'error') {
+                        throw new Error(data.content);
+                    }
+                }
+            }
+        }
+
+        showToast('✅ AI成功生成了协议大纲！', 'success');
         
     } catch (error) {
         console.error('❌ 生成大纲失败:', error);
