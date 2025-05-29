@@ -1621,6 +1621,7 @@ body {
     font-size: var(--font-size-sm);
 }
 
+
 .confirmation-actions {
     display: flex;
     gap: var(--spacing-md);
