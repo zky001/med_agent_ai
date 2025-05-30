@@ -525,6 +525,21 @@
                                                 <span class="progress-text" id="generation-progress-text">0%</span>
                                             </div>
                                         </div>
+
+                                        <div class="section-outline">
+                                            <h4>本章节文档结构</h4>
+                                            <pre id="chapter-outline"></pre>
+                                            <div class="prompt-edit-controls">
+                                                <button class="btn btn-secondary" onclick="openPromptEditor()">编辑提示词</button>
+                                                <button class="btn btn-secondary" onclick="triggerPromptFile()">从附件导入提示词</button>
+                                                <input type="file" id="prompt-file-input" accept=".txt" style="display:none" onchange="handlePromptFile(event)">
+                                            </div>
+                                            <textarea id="prompt-editor-area" rows="4" style="display:none"></textarea>
+                                            <div id="prompt-editor-actions" style="display:none" class="prompt-editor-actions">
+                                                <button class="btn btn-primary" onclick="savePromptEdit()">保存</button>
+                                                <button class="btn btn-secondary" onclick="cancelPromptEdit()">取消</button>
+                                            </div>
+                                        </div>
                                         
                                         <div class="current-module" id="current-module">
                                             <div class="module-indicator">

@@ -1628,6 +1628,37 @@ body {
     gap: var(--spacing-sm);
 }
 
+.section-outline {
+    margin-top: var(--spacing-md);
+}
+
+.section-outline pre {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    padding: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+    white-space: pre-wrap;
+    font-family: monospace;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.prompt-edit-controls {
+    display: flex;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+}
+
+#prompt-editor-area {
+    width: 100%;
+    margin-bottom: var(--spacing-sm);
+}
+
+.prompt-editor-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
 .kb-options {
     display: flex;
     flex-wrap: wrap;

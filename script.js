@@ -1675,10 +1675,20 @@ window.generateAllSections = async function() {
     }
 
     smartGenerationState.isGenerating = true;
+
     while (smartGenerationState.currentModuleIndex < (smartGenerationState.generatedOutline?.length || 0)) {
         await generateCurrentSection();
     }
-};
+}; 
+
+function renderSectionOutline() {
+    const index = smartGenerationState.currentModuleIndex;
+    const section = smartGenerationState.generatedOutline && smartGenerationState.generatedOutline[index];
+    const outlineEl = document.getElementById('chapter-outline');
+    if (outlineEl) {
+        outlineEl.textContent = section ? formatOutlineContent(section) : '';
+    }
+}
 
 // 从目录直接开始一键生成全文
 window.startAutoGeneration = async function() {
@@ -1744,6 +1754,16 @@ function renderModuleControls() {
     const progressText = document.getElementById('generation-progress-text');
     if (progressFill) progressFill.style.width = `${percent}%`;
     if (progressText) progressText.textContent = `进度 ${percent}%`;
+
+    const outlineEl = document.getElementById('chapter-outline');
+    if (outlineEl) {
+        outlineEl.textContent = section ? formatOutlineContent(section) : '';
+    }
+
+    const editor = document.getElementById('prompt-editor-area');
+    const actions = document.getElementById('prompt-editor-actions');
+    if (editor) editor.style.display = 'none';
+    if (actions) actions.style.display = 'none';
 }
 
 async function generateCurrentSection() {
@@ -2111,6 +2131,60 @@ window.closeContentEditor = function() {
     if (textarea) {
         textarea.removeEventListener('input', handleEditorInput);
     }
+};
+
+// 提示词编辑相关功能
+window.openPromptEditor = function() {
+    const index = smartGenerationState.currentModuleIndex;
+    const section = smartGenerationState.generatedOutline && smartGenerationState.generatedOutline[index];
+    if (!section) return;
+    const editor = document.getElementById('prompt-editor-area');
+    const actions = document.getElementById('prompt-editor-actions');
+    if (editor && actions) {
+        editor.value = section.content || '';
+        editor.style.display = 'block';
+        actions.style.display = 'flex';
+    }
+};
+
+window.cancelPromptEdit = function() {
+    const editor = document.getElementById('prompt-editor-area');
+    const actions = document.getElementById('prompt-editor-actions');
+    if (editor) editor.style.display = 'none';
+    if (actions) actions.style.display = 'none';
+};
+
+window.savePromptEdit = function() {
+    const index = smartGenerationState.currentModuleIndex;
+    const section = smartGenerationState.generatedOutline && smartGenerationState.generatedOutline[index];
+    const editor = document.getElementById('prompt-editor-area');
+    if (section && editor) {
+        section.content = editor.value;
+        renderSectionOutline();
+    }
+    window.cancelPromptEdit();
+};
+
+window.triggerPromptFile = function() {
+    const fileInput = document.getElementById('prompt-file-input');
+    if (fileInput) fileInput.click();
+};
+
+window.handlePromptFile = function(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const text = e.target.result;
+        const editor = document.getElementById('prompt-editor-area');
+        const actions = document.getElementById('prompt-editor-actions');
+        if (editor && actions) {
+            editor.value = text;
+            editor.style.display = 'block';
+            actions.style.display = 'flex';
+        }
+    };
+    reader.readAsText(file);
 };
 
 // 切换生成步骤
