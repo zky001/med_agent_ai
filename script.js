@@ -2146,6 +2146,7 @@ window.openContentEditor = function() {
     if (modal && textarea) {
         textarea.value = smartGenerationState.content || '';
         textarea.addEventListener('input', handleEditorInput);
+        modal.style.display = 'flex';
         modal.classList.add('active');
         document.body.classList.add('modal-open');
     }
@@ -2188,6 +2189,8 @@ window.openPromptEditor = function() {
     const textarea = document.getElementById('prompt-modal-text');
     if (modal && textarea) {
         textarea.value = prompt || '';
+        modal.style.display = 'flex';
+
         modal.classList.add('active');
         document.body.classList.add('modal-open');
     }
@@ -2228,6 +2231,7 @@ window.handlePromptFile = function(event) {
         const textarea = document.getElementById('prompt-modal-text');
         if (modal && textarea) {
             textarea.value = text;
+            modal.style.display = 'flex';
             modal.classList.add('active');
             document.body.classList.add('modal-open');
         }
