@@ -1044,6 +1044,11 @@ body {
     margin: var(--spacing-lg) 0;
 }
 
+.mermaid svg {
+    max-width: 100%;
+    height: auto;
+}
+
 .realtime-monitor {
     background: var(--white);
     padding: var(--spacing-xl);

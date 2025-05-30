@@ -714,26 +714,17 @@
                     <div id="workflow" class="process-tab-content active">
                         <h3>系统工作流程</h3>
                         <div class="mermaid" id="workflow-diagram">
-                            graph TD
-                                A[用户输入需求] --> B[AI智能解析]
-                                B --> C[信息提取]
-                                C --> D[知识库检索]
-                                D --> E[内容增强]
-                                E --> F[分模块生成]
-                                F --> G[质量检查]
-                                G --> H[格式化输出]
-                                
-                                D --> D1[临床试验方案]
-                                D --> D2[医学指南]
-                                D --> D3[文献资料]
-                                D --> D4[用户文档]
-                                
-                                F --> F1[研究背景]
-                                F --> F2[研究设计]
-                                F --> F3[研究人群]
-                                F --> F4[给药方案]
-                                F --> F5[安全评估]
-                                F --> F6[统计分析]
+                            flowchart TD
+                                A[需求输入<br>(自然语言/表单)] --> B[关键信息抽取<br>(LLM JSON 输出)]
+                                B --> C[向量检索<br>(指南/法规/文献/内部模板)]
+                                C --> D[模块级 Prompt 组装<br>(RAG 拼装)]
+                                D --> E[LLM 逐模块生成<br>(Stream 输出)]
+                                E --> F[自动质量检查<br>(AI + 规则)]
+                                F --> G{通过?}
+                                G -- 否 --> D
+                                G -- 是 --> H[交互式编辑/审阅<br>(人机协同)]
+                                H --> I[一键导出<br>(Word/PDF/结构化 JSON)]
+                                I --> J[后续配套<br>(SAP/CRF/ICF 等生成)]
                         </div>
                     </div>
 

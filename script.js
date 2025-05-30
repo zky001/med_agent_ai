@@ -1092,8 +1092,11 @@ window.toggleSettings = function() {
 
 // 全局函数绑定 - 流程相关
 window.renderProcessCharts = function() {
-    // 渲染流程图表的函数
     console.log('渲染流程图表');
+    if (typeof mermaid !== 'undefined') {
+        const diagrams = document.querySelectorAll('#process .mermaid');
+        mermaid.init(undefined, diagrams);
+    }
 };
 
 // 全局函数绑定 - 模态框相关
@@ -1768,6 +1771,7 @@ function renderModuleControls() {
     const kbOptions = document.getElementById('kb-options');
     const promptEl = document.getElementById('custom-prompt');
     const btn = document.getElementById('generate-section-btn');
+    const stepHeaderTitle = document.querySelector('#step-4 .step-header-content h3');
 
     if (!section) {
         titleEl.textContent = '全部章节生成完成';
@@ -1779,7 +1783,8 @@ function renderModuleControls() {
         return;
     }
 
-    titleEl.textContent = '生成章节: ' + section.title;
+    if (stepHeaderTitle) stepHeaderTitle.textContent = '生成章节: ' + section.title;
+    if (titleEl) titleEl.textContent = '章节控制';
     kbOptions.innerHTML = availableKnowledgeTypes.map(t => `<label><input type="checkbox" value="${t}" checked> ${t}</label>`).join('');
     promptEl.value = '';
     promptEl.style.display = 'block';
@@ -2175,22 +2180,40 @@ window.closeContentEditor = function() {
 };
 
 // 提示词编辑相关功能
-window.openPromptEditor = function() {
+window.openPromptEditor = async function() {
     const index = smartGenerationState.currentModuleIndex;
     editingPromptIndex = index;
     let prompt = smartGenerationState.sectionPrompts[index];
+
     if (!prompt) {
-        const viewer = document.getElementById('prompt-viewer');
-        if (viewer) {
-            prompt = viewer.textContent.trim();
+        try {
+            const section = smartGenerationState.generatedOutline[index];
+            const selectedTypes = Array.from(document.querySelectorAll('#kb-options input:checked')).map(el => el.value);
+            const response = await fetch(`${API_BASE_URL}/get_section_prompt`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    confirmed_info: smartGenerationState.confirmedInfo,
+                    section: section,
+                    knowledge_types: selectedTypes
+                })
+            });
+            const data = await response.json();
+            prompt = data.prompt || '';
+        } catch (err) {
+            console.error('获取默认提示词失败:', err);
+            const viewer = document.getElementById('prompt-viewer');
+            if (viewer) {
+                prompt = viewer.textContent.trim();
+            }
         }
     }
+
     const modal = document.getElementById('prompt-editor-modal');
     const textarea = document.getElementById('prompt-modal-text');
     if (modal && textarea) {
         textarea.value = prompt || '';
         modal.style.display = 'flex';
-
         modal.classList.add('active');
         document.body.classList.add('modal-open');
     }
@@ -2454,9 +2477,9 @@ function initializeStepNavigation() {
         const stepNumber = index + 1;
         const stepTitles = [
             '需求输入',
-            '信息确认', 
+            '信息确认',
             '目录调整',
-            '智能生成中'
+            '生成章节'
         ];
         const stepDescriptions = [
             '请详细描述您的临床试验研究需求',
