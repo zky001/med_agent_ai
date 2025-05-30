@@ -493,6 +493,10 @@
                                                 <i class="fas fa-rocket"></i>
                                                 开始逐步生成
                                             </button>
+                                            <button class="btn btn-success btn-lg" onclick="startAutoGeneration()" style="margin-left:0.5rem;">
+                                                <i class="fas fa-forward"></i>
+                                                一键生成全文
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -553,6 +557,7 @@
                                             <div class="kb-options" id="kb-options"></div>
                                             <textarea id="custom-prompt" rows="4" placeholder="自定义提示词（可选）"></textarea>
                                             <button class="btn btn-primary" id="generate-section-btn" onclick="generateCurrentSection()">生成本章节</button>
+                                            <button class="btn btn-success" id="generate-all-btn" onclick="generateAllSections()" style="margin-left:0.5rem;">一键生成</button>
                                         </div>
                                     </div>
                                 </div>
@@ -651,17 +656,21 @@
                                             </span>
                                         </div>
                                         <div class="export-actions">
-                                            <button class="btn btn-primary" onclick="exportProtocol('docx')">
+                                            <button class="btn btn-primary" onclick="exportSmartResult('docx')">
                                                 <i class="fas fa-file-word"></i>
                                                 导出Word
                                             </button>
-                                            <button class="btn btn-secondary" onclick="exportProtocol('pdf')">
+                                            <button class="btn btn-secondary" onclick="exportSmartResult('pdf')">
                                                 <i class="fas fa-file-pdf"></i>
                                                 导出PDF
                                             </button>
-                                            <button class="btn btn-info" onclick="copyProtocolContent()">
+                                            <button class="btn btn-info" onclick="copySmartResult()">
                                                 <i class="fas fa-copy"></i>
                                                 复制全文
+                                            </button>
+                                            <button class="btn btn-warning" onclick="openContentEditor()">
+                                                <i class="fas fa-edit"></i>
+                                                编辑内容
                                             </button>
                                         </div>
                                     </div>
@@ -854,6 +863,21 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Editor Modal -->
+        <div id="content-editor-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2><i class="fas fa-edit"></i> 编辑方案内容</h2>
+                    <button class="close-btn" onclick="closeContentEditor()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <textarea id="content-editor-text" class="smart-textarea" rows="20"></textarea>
                 </div>
             </div>
         </div>
