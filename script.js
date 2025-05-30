@@ -1731,7 +1731,7 @@ async function generateCurrentSection() {
                         if (streamingContent) streamingContent.innerHTML += escapeHtml(data.content);
                     } else if (data.type === 'content') {
                         smartGenerationState.content += data.content;
-                        if (marked) {
+                        if (typeof marked !== 'undefined') {
                             streamingContent.innerHTML += marked.parse(data.content);
                         } else if (streamingContent) {
                             streamingContent.innerHTML += data.content.replace(/\n/g, '<br>');
@@ -1828,14 +1828,6 @@ function updateContentDisplay(content) {
 
     // 滚动到底部
     contentContainer.scrollTop = contentContainer.scrollHeight;
-}
-
-function showSystemPrompt(text) {
-    const promptEl = document.getElementById('prompt-viewer');
-    if (promptEl) {
-        promptEl.textContent = text;
-        promptEl.style.display = text ? 'block' : 'none';
-    }
 }
 
 function resetLiveContent() {
