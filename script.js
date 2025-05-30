@@ -105,12 +105,12 @@ function initializeInterface() {
         settingsHeader.addEventListener('click', toggleSettings);
     }
 
-    // 设置智能生成滑块
-    const creativitySlider = document.getElementById('smart-creativity');
-    const creativityValue = document.getElementById('creativity-value');
-    if (creativitySlider && creativityValue) {
-        creativitySlider.addEventListener('input', function() {
-            creativityValue.textContent = this.value + '%';
+    // 设置智能生成滑块(详细程度)
+    const detailSlider = document.getElementById('smart-detail-level');
+    const detailValue = document.getElementById('detail-level-value');
+    if (detailSlider && detailValue) {
+        detailSlider.addEventListener('input', function() {
+            detailValue.textContent = this.value + '%';
         });
     }
 }
@@ -1723,7 +1723,7 @@ async function generateCurrentSection() {
                 section: section,
                 knowledge_types: selectedTypes,
                 custom_prompt: customPrompt,
-                settings: { detail_level: parseInt(document.getElementById('smart-creativity')?.value || 30) / 100 }
+                settings: { detail_level: parseInt(document.getElementById('smart-detail-level')?.value || 30) / 100 }
             })
         });
 
@@ -2610,7 +2610,7 @@ async function startRealStreamGeneration() {
                 confirmed_info: smartGenerationState.confirmedInfo,
                 outline: smartGenerationState.generatedOutline,
                 settings: {
-                    detail_level: parseInt(document.getElementById('smart-creativity')?.value || 30) / 100,
+                    detail_level: parseInt(document.getElementById('smart-detail-level')?.value || 30) / 100,
                     include_references: document.getElementById('smart-include-literature')?.checked || true,
                     include_quality_check: document.getElementById('smart-include-quality')?.checked || true
                 }
