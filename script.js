@@ -2134,7 +2134,7 @@ function switchGenerationStep(stepNumber) {
     const welcomeSection = document.querySelector('.right-panel .welcome-message');
     const contentContainer = document.querySelector('.right-panel .content-container');
     
-    if (stepNumber === 4) {
+    if (stepNumber === 3 || stepNumber === 4) {
         if (welcomeSection) welcomeSection.style.display = 'none';
         if (contentContainer) contentContainer.style.display = 'block';
     } else {
@@ -2401,6 +2401,15 @@ window.proceedToOutline = async function() {
         // 显示加载状态
         showLoading('正在调用AI模型生成协议大纲...');
         resetLiveContent();
+
+        // 在右侧显示实时推理画布
+        const welcomeSection = document.querySelector('.right-panel .welcome-message');
+        const contentContainer = document.getElementById('live-content-container');
+        if (welcomeSection) welcomeSection.style.display = 'none';
+        if (contentContainer) {
+            contentContainer.style.display = 'block';
+            contentContainer.innerHTML = '<div id="outline-status">正在调用AI模型生成协议大纲...</div><pre id="outline-prompt"></pre><pre id="outline-content">推理中...</pre>';
+        }
         
         // 调用真实的后端API生成大纲（流式）
         const response = await fetch(`${API_BASE_URL}/generate_outline_stream`, {
@@ -2423,10 +2432,6 @@ window.proceedToOutline = async function() {
         
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        const contentContainer = document.getElementById('live-content-container');
-        if (contentContainer) {
-            contentContainer.innerHTML = '<pre id="outline-prompt"></pre><pre id="outline-content">推理中...</pre>';
-        }
         const promptEl = document.getElementById('outline-prompt');
         const contentEl = document.getElementById('outline-content');
         let accumulated = '';
