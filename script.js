@@ -1369,6 +1369,37 @@ let smartGenerationState = {
     sectionPrompts: []
 };
 
+// 手动填入默认信息
+window.manualInputInfo = function() {
+    const defaultInfo = {
+        drug_type: '示例药物',
+        indication: '示例疾病',
+        study_phase: 'I期',
+        additional: '请在此补充其他信息'
+    };
+    smartGenerationState.extractedInfo = defaultInfo;
+    fillExtractedInfo(defaultInfo);
+    switchGenerationStep(2);
+    showToast('已填入默认信息，请确认或调整', 'success');
+};
+
+// 跳过确认信息，直接生成默认目录
+window.skipToDefaultOutline = function() {
+    const mockOutline = [
+        { title: '1. 研究背景与目的', content: '描述研究背景、科学依据和研究目的' },
+        { title: '2. 研究设计', content: '详细说明研究类型、设计方案和实施方法' },
+        { title: '3. 研究对象', content: '定义入组标准、排除标准和受试者筛选流程' },
+        { title: '4. 给药方案', content: '详细描述药物给药方案、剂量递增和安全监测' },
+        { title: '5. 安全性评估', content: '安全性监测指标、不良事件处理和停药标准' },
+        { title: '6. 疗效评估', content: '主要终点和次要终点的评估方法和时间点' },
+        { title: '7. 统计分析', content: '样本量计算、统计分析方法和数据管理' }
+    ];
+    smartGenerationState.generatedOutline = mockOutline;
+    fillOutlineEditor(mockOutline);
+    switchGenerationStep(3);
+    showToast('已跳过信息确认，使用默认目录', 'info');
+};
+
 // 确认信息并生成目录
 window.proceedToOutline = async function() {
     console.log('proceedToOutline 函数被调用');
@@ -1487,7 +1518,8 @@ function formatFieldName(fieldName) {
         patient_population: '患者人群',
         primary_endpoint: '主要终点',
         study_phase: '研究阶段',
-        estimated_enrollment: '预计入组'
+        estimated_enrollment: '预计入组',
+        additional: '附加信息'
     };
     return nameMap[fieldName] || fieldName;
 }
@@ -1690,6 +1722,9 @@ function renderSectionOutline() {
     if (outlineEl) {
         outlineEl.textContent = section ? formatOutlineContent(section) : '';
     }
+
+    const existingPrompt = smartGenerationState.sectionPrompts[index];
+    showSystemPrompt(existingPrompt || '');
 }
 
 // 从目录直接开始一键生成全文
@@ -2155,6 +2190,7 @@ window.openPromptEditor = function() {
     if (modal && textarea) {
         textarea.value = prompt || '';
         modal.style.display = 'flex';
+
         modal.classList.add('active');
         document.body.classList.add('modal-open');
     }
