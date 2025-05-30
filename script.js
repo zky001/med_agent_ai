@@ -1506,29 +1506,39 @@ function fillOutlineEditor(outline) {
 
 // 创建大纲项目HTML
 function createOutlineItemHTML(section, index) {
+    const subs = (section.subsections || []).map((sub, subIndex) => `
+        <div class="subsection-item">
+            <input type="text" class="subsection-input" value="${escapeHtml(sub)}"
+                   onchange="updateOutlineSubsection(${index}, ${subIndex}, this.value)">
+            <button class="btn-outline-action danger" title="删除小节"
+                    onclick="deleteOutlineSubsection(${index}, ${subIndex})">
+                <i class="fas fa-minus"></i>
+            </button>
+        </div>
+    `).join('');
+
     return `
         <div class="outline-item" data-index="${index}">
             <div class="outline-header">
-                <input type="text" class="outline-title" value="${escapeHtml(section.title)}" 
+                <input type="text" class="outline-title" value="${escapeHtml(section.title)}"
                        onchange="updateOutlineSection(${index}, 'title', this.value)">
                 <div class="outline-actions">
-                    <button class="btn-outline-action" onclick="moveOutlineSection(${index}, 'up')" 
-                            ${index === 0 ? 'disabled' : ''} title="上移">
+                    <button class="btn-outline-action" onclick="moveOutlineSection(${index}, 'up')" ${index === 0 ? 'disabled' : ''} title="上移">
                         <i class="fas fa-arrow-up"></i>
                     </button>
-                    <button class="btn-outline-action" onclick="moveOutlineSection(${index}, 'down')" 
-                            title="下移">
+                    <button class="btn-outline-action" onclick="moveOutlineSection(${index}, 'down')" title="下移">
                         <i class="fas fa-arrow-down"></i>
                     </button>
-                    <button class="btn-outline-action danger" onclick="deleteOutlineSection(${index})" 
-                            title="删除">
+                    <button class="btn-outline-action danger" onclick="deleteOutlineSection(${index})" title="删除">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
             </div>
-            <div class="outline-content">
-                <textarea placeholder="章节内容描述..." 
-                          onchange="updateOutlineSection(${index}, 'content', this.value)">${escapeHtml(section.content || '')}</textarea>
+            <div class="subsection-list">
+                ${subs}
+                <button class="btn btn-sm btn-secondary" onclick="addOutlineSubsection(${index})">
+                    <i class="fas fa-plus"></i> 添加小节
+                </button>
             </div>
         </div>
     `;
@@ -1540,6 +1550,31 @@ window.updateOutlineSection = function(index, field, value) {
         smartGenerationState.generatedOutline[index][field] = value;
         console.log(`更新章节 ${index} 的 ${field}:`, value);
     }
+};
+
+window.updateOutlineSubsection = function(sectionIndex, subIndex, value) {
+    const outline = smartGenerationState.generatedOutline;
+    if (outline && outline[sectionIndex] && outline[sectionIndex].subsections) {
+        outline[sectionIndex].subsections[subIndex] = value;
+    }
+};
+
+window.addOutlineSubsection = function(sectionIndex) {
+    const outline = smartGenerationState.generatedOutline;
+    if (!outline || !outline[sectionIndex]) return;
+    if (!Array.isArray(outline[sectionIndex].subsections)) {
+        outline[sectionIndex].subsections = [];
+    }
+    const newIndex = outline[sectionIndex].subsections.length + 1;
+    outline[sectionIndex].subsections.push(`${sectionIndex + 1}.${newIndex} 新小节`);
+    fillOutlineEditor(outline);
+};
+
+window.deleteOutlineSubsection = function(sectionIndex, subIndex) {
+    const outline = smartGenerationState.generatedOutline;
+    if (!outline || !outline[sectionIndex] || !outline[sectionIndex].subsections) return;
+    outline[sectionIndex].subsections.splice(subIndex, 1);
+    fillOutlineEditor(outline);
 };
 
 // 移动大纲章节
@@ -1575,10 +1610,10 @@ window.deleteOutlineSection = function(index) {
 window.addOutlineSection = function() {
     const outline = smartGenerationState.generatedOutline;
     if (!outline) return;
-    
+
     const newSection = {
         title: `${outline.length + 1}. 新章节`,
-        content: ''
+        subsections: []
     };
     
     outline.push(newSection);
@@ -2100,6 +2135,7 @@ function navigatePrevious() {
 // 导航到下一步
 function navigateNext() {
     if (currentStepNumber < totalSteps) {
+        resetLiveContent();
         switchGenerationStep(currentStepNumber + 1);
     }
 }
@@ -2396,9 +2432,11 @@ window.proceedToOutline = async function() {
         
         smartGenerationState.confirmedInfo = confirmedInfo;
         
-        // 显示加载状态
-        showLoading('正在调用AI模型生成协议大纲...');
-        
+        const contentContainer = document.getElementById('live-content-container');
+        if (contentContainer) {
+            contentContainer.innerHTML = '<pre id="outline-prompt" class="system-prompt"></pre><pre id="outline-content">正在调用AI模型生成协议大纲...</pre>';
+        }
+
         // 调用真实的后端API生成大纲（流式）
         const response = await fetch(`${API_BASE_URL}/generate_outline_stream`, {
             method: 'POST',
@@ -2420,12 +2458,9 @@ window.proceedToOutline = async function() {
         
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        const contentContainer = document.getElementById('live-content-container');
-        if (contentContainer) {
-            contentContainer.innerHTML = '<pre id="outline-prompt"></pre><pre id="outline-content"></pre>';
-        }
         const promptEl = document.getElementById('outline-prompt');
         const contentEl = document.getElementById('outline-content');
+        let firstToken = true;
         let accumulated = '';
 
         while (true) {
@@ -2441,6 +2476,10 @@ window.proceedToOutline = async function() {
                     if (data.type === 'system_prompt') {
                         if (promptEl) promptEl.textContent = data.content;
                     } else if (data.type === 'content') {
+                        if (firstToken && contentEl) {
+                            contentEl.textContent = '';
+                            firstToken = false;
+                        }
                         accumulated += data.content;
                         if (contentEl) contentEl.textContent += data.content;
                     } else if (data.type === 'outline') {

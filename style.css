@@ -1737,6 +1737,26 @@ body {
     font-family: inherit;
 }
 
+.subsection-list {
+    margin-top: var(--spacing-sm);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.subsection-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.subsection-input {
+    flex: 1;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+}
+
 .outline-actions-bottom {
     display: flex;
     gap: var(--spacing-md);
@@ -1843,6 +1863,7 @@ body {
     white-space: pre-wrap;
     max-height: 150px;
     overflow-y: auto;
+    color: var(--secondary-color);
 }
 
 .content-viewer {
@@ -1861,6 +1882,7 @@ body {
     overflow-y: auto;
     white-space: pre-wrap;
     font-size: 0.9rem;
+    color: var(--secondary-color);
 }
 
 .content-viewer h1,
