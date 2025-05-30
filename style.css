@@ -1737,6 +1737,16 @@ body {
     font-family: inherit;
 }
 
+.subsection-list {
+    margin-top: var(--spacing-sm);
+    margin-left: var(--spacing-lg);
+    color: var(--secondary-color);
+}
+
+.subsection-list li {
+    margin-bottom: var(--spacing-xs);
+}
+
 .outline-actions-bottom {
     display: flex;
     gap: var(--spacing-md);
@@ -1843,6 +1853,17 @@ body {
     white-space: pre-wrap;
     max-height: 150px;
     overflow-y: auto;
+    color: var(--secondary-color);
+}
+
+#system-prompt,
+#outline-prompt {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    padding: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+    color: var(--secondary-color);
+    white-space: pre-wrap;
 }
 
 .content-viewer {
@@ -1861,6 +1882,7 @@ body {
     overflow-y: auto;
     white-space: pre-wrap;
     font-size: 0.9rem;
+    color: var(--secondary-color);
 }
 
 .content-viewer h1,
