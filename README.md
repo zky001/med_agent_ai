@@ -32,6 +32,10 @@
 
 启动完成后，在浏览器访问 [http://localhost:3000](http://localhost:3000) 即可使用。
 
+### 新增接口
+
+- `POST /get_section_prompt`：根据已确认的信息和待生成章节，返回默认的系统提示词，可供前端编辑。
+
 ## 运行环境
 
 - Python 3.10 及以上
@@ -54,7 +58,13 @@ flowchart TD
     H --> I[一键导出<br>(Word/PDF/结构化 JSON)]
     I --> J[后续配套<br>(SAP/CRF/ICF 等生成)]
 ```
+## 接口说明
 
+- `POST /get_section_prompt` 根据已确认的信息和章节标题，从知识库检索相关内容并返回生成该章节的默认提示词。
+  - `confirmed_info`：确认后的研究信息
+  - `section`：当前章节对象，需包含 `title`
+  - `knowledge_types`：要检索的知识库类型列表
+  - 返回：`{ "prompt": "..." }`
 ## 许可
 
 本项目仅供学习与演示使用，代码和示例数据均不应用于真实医疗场景。
