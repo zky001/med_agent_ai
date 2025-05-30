@@ -18,6 +18,7 @@ import numpy as np
 import chardet
 import logging
 import sys
+from module_templates import MODULE_TEMPLATES
 from datetime import datetime
 
 # 导入真实协议生成器
@@ -56,6 +57,20 @@ logger.setLevel(logging.INFO)
 logger.info("🚀 日志系统初始化完成")
 print("如果你看到这行但看不到上面的日志，说明日志配置有问题", flush=True)
 
+# 临床试验方案生成时参考的示例模板，可用于指导段落的写作格式
+REFERENCE_TEMPLATE = """
+1.1 背景
+1.1.1 疾病背景及治疗现状
+癌症是严重威胁人类健康的重大疾病。根据GLOBOCAN 2020的数据，预计2022年全球新发恶性肿瘤病例19,292,789例，死亡病例9,958,133例。其中，全球食管癌预计年新发病例604,100例，年新发死亡病例544,076例，而中国每年就有324,422例新发病例和301,135例新发死亡。
+1.1.1.1 晚期食管鳞状细胞癌诊疗现状
+在过去，晚期或转移性ESCC一线标准治疗以铂类为基础的双药化疗方案。随着免疫检查点抑制剂的应用，免疫联合化疗成为一线标准治疗，但仍有大量患者耐药。
+1.1.1.2 可切除食管鳞状细胞癌诊疗现状
+根据2023版CSCO指南，新辅助治疗可提高R0切除率和总体生存。
+1.1.2 拟开发药物研发背景资料
+IPM514设计为通用型mRNA疫苗，包含食管鳞癌相关TAA的多个表位，基于LNP递送系统。
+1.2 非临床总结
+动物研究显示IPM514可诱导特异性T细胞并抑制肿瘤生长，耐受性良好。
+"""
 
 # 添加智能文件编码检测函数
 def read_file_with_encoding_detection(file_path):
@@ -2352,7 +2367,16 @@ def get_module_generation_prompt(module_name, confirmed_info, knowledge_context=
 """
     }
     
-    return prompts.get(module_name, f"请撰写{module_name}部分的内容。{quality_requirements}")
+    prompt = prompts.get(module_name, f"请撰写{module_name}部分的内容。{quality_requirements}")
+
+    # 在提示词末尾附加通用模板或模块特定模板
+    module_template = MODULE_TEMPLATES.get(module_name)
+    if module_template:
+        prompt += f"\n\n参考模板：\n{module_template}"
+    elif REFERENCE_TEMPLATE:
+        prompt += f"\n\n参考模板：\n{REFERENCE_TEMPLATE}"
+
+    return prompt
 
 def generate_protocol_with_knowledge_enhancement(module_name, confirmed_info, knowledge_results):
     """结合知识库检索结果生成协议内容"""

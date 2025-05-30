@@ -2573,6 +2573,14 @@ async function startRealStreamGeneration() {
     const streamingContent = document.getElementById('streaming-content');
     const progressFill = document.getElementById('progress-fill');
     const progressText = document.getElementById('progress-text');
+    const completedModulesEl = document.getElementById('completed-modules');
+    const totalModulesEl = document.getElementById('total-modules');
+    const generatedCharsEl = document.getElementById('generated-chars');
+
+    const totalModules = smartGenerationState.generatedOutline ? smartGenerationState.generatedOutline.length : 0;
+    if (totalModulesEl) totalModulesEl.textContent = totalModules;
+    if (completedModulesEl) completedModulesEl.textContent = 0;
+    if (generatedCharsEl) generatedCharsEl.textContent = 0;
     
     try {
         const response = await fetch(`${API_BASE_URL}/generate_protocol_stream`, {
@@ -2620,11 +2628,15 @@ async function startRealStreamGeneration() {
                             const percent = Math.round(data.progress * 100);
                             progressFill.style.width = `${percent}%`;
                             progressText.textContent = data.current_module || `生成进度: ${percent}%`;
+                            if (completedModulesEl && totalModules > 0) {
+                                completedModulesEl.textContent = Math.floor(data.progress * totalModules);
+                            }
                         }
                         
                         // 更新内容
                         if (data.content) {
                             accumulatedContent += data.content;
+                            if (generatedCharsEl) generatedCharsEl.textContent = accumulatedContent.length;
                             
                             // 使用marked渲染Markdown
                             if (typeof marked !== 'undefined') {
@@ -2646,6 +2658,8 @@ async function startRealStreamGeneration() {
                             console.log('✅ 生成完成');
                             smartGenerationState.content = accumulatedContent;
                             progressText.textContent = '生成完成！';
+                            if (completedModulesEl) completedModulesEl.textContent = totalModules;
+                            if (generatedCharsEl) generatedCharsEl.textContent = accumulatedContent.length;
                             
                             // 隐藏进度条
                             setTimeout(() => {
