@@ -1717,32 +1717,47 @@ async function generateCurrentSection() {
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        let leftover = '';
+        let accumulated = '';
 
         while (true) {
             const { value, done } = await reader.read();
             if (done) break;
-            const chunk = decoder.decode(value);
-            chunk.split('\n').forEach(line => {
-                if (line.startsWith('data: ')) {
-                    const data = JSON.parse(line.slice(6));
-                    if (data.error) {
-                        showToast('生成章节失败: ' + data.error, 'error');
-                        throw new Error(data.error);
-                    } else if (data.type === 'system_prompt') {
-                        showSystemPrompt(data.content);
-                    } else if (data.type === 'section_start') {
-                        if (streamingContent) streamingContent.innerHTML += escapeHtml(data.content);
-                    } else if (data.type === 'content') {
-                        smartGenerationState.content += data.content;
-                        if (typeof marked !== 'undefined') {
-                            streamingContent.innerHTML += marked.parse(data.content);
-                        } else if (streamingContent) {
-                            streamingContent.innerHTML += data.content.replace(/\n/g, '<br>');
-                        }
-                        if (streamingContent) streamingContent.scrollTop = streamingContent.scrollHeight;
-                    }
+            leftover += decoder.decode(value, { stream: true });
+            const lines = leftover.split('\n');
+            leftover = lines.pop();
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed.startsWith('data: ')) continue;
+                const data = JSON.parse(trimmed.slice(6));
+
+                if (data.error) {
+                    showToast('生成章节失败: ' + data.error, 'error');
+                    throw new Error(data.error);
                 }
-            });
+
+                if (data.system_prompt || data.type === 'system_prompt') {
+                    showSystemPrompt(data.system_prompt || data.content);
+                    continue;
+                }
+
+                if (data.section_start || data.type === 'section_start') {
+                    accumulated += data.section_start || data.content;
+                }
+
+                if (data.content) {
+                    accumulated += data.content;
+                }
+
+                if (data.content || data.section_start) {
+                    if (typeof marked !== 'undefined') {
+                        streamingContent.innerHTML = marked.parse(accumulated);
+                    } else if (streamingContent) {
+                        streamingContent.innerHTML = accumulated.replace(/\n/g, '<br>');
+                    }
+                    if (streamingContent) streamingContent.scrollTop = streamingContent.scrollHeight;
+                }
+            }
         }
 
         smartGenerationState.currentModuleIndex++;
