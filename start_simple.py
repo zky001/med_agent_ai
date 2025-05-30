@@ -1603,9 +1603,9 @@ async def extract_key_info(request: KeyInfoExtractionRequest):
         raise HTTPException(status_code=500, detail=f"关键信息提取失败: {str(e)}")
 
 
-@app.post("/extract_key_info_stream")
-async def extract_key_info_stream(request: KeyInfoExtractionRequest):
-    """流式提取关键信息，返回系统提示词和内容"""
+@app.post("/extract_key_info_stream", include_in_schema=False)
+async def extract_key_info_stream_v1(request: KeyInfoExtractionRequest):
+    """(已废弃) 流式提取关键信息，返回系统提示词和内容"""
     from fastapi.responses import StreamingResponse
     import asyncio
 
@@ -1661,9 +1661,9 @@ async def extract_key_info_stream(request: KeyInfoExtractionRequest):
     )
 
 
-@app.post("/extract_key_info_stream")
-async def extract_key_info_stream(request: KeyInfoExtractionRequest):
-    """流式提取关键信息，并同时返回系统提示词"""
+@app.post("/extract_key_info_stream", include_in_schema=False)
+async def extract_key_info_stream_v2(request: KeyInfoExtractionRequest):
+    """(已废弃) 流式提取关键信息，并同时返回系统提示词"""
     from fastapi.responses import StreamingResponse
     import asyncio
 
@@ -1946,9 +1946,10 @@ async def generate_outline(request: OutlineGenerationRequest):
         raise HTTPException(status_code=500, detail=f"大纲生成失败: {str(e)}")
 
 
-@app.post("/generate_outline_stream")
-async def generate_outline_stream(request: OutlineGenerationRequest):
-    """流式生成协议大纲"""
+# 旧版接口保留以兼容历史调用，实际功能由下方新版实现
+@app.post("/generate_outline_stream", include_in_schema=False)
+async def generate_outline_stream_legacy(request: OutlineGenerationRequest):
+    """(已废弃) 流式生成协议大纲"""
     from fastapi.responses import StreamingResponse
     import asyncio
 
@@ -1990,26 +1991,24 @@ async def generate_outline_stream(request: OutlineGenerationRequest):
     )
 
 
-@app.post("/generate_outline_stream")
-async def generate_outline_stream(request: OutlineGenerationRequest):
-    """流式生成协议大纲"""
+@app.post("/generate_outline_stream", include_in_schema=False)
+async def generate_outline_stream_v1(request: OutlineGenerationRequest):
+    """(已废弃) 流式生成协议大纲"""
     from fastapi.responses import StreamingResponse
     import asyncio
 
     async def generate():
         try:
-            system_prompt = "你是一位临床试验方案撰写专家。请生成符合ICH-GCP标准的临床试验方案章节目录。"
+            system_prompt = "你是一位临床试验方案撰写专家。请生成符合ICH-GCP标准的临床试验方案目录。"
             outline_prompt = f"""
-基于以下确认的临床试验信息，生成一个完整的临床试验方案大纲：
+基于以下确认的临床试验信息，生成协议目录，仅需标题：
+{json.dumps(request.confirmed_info, ensure_ascii=False)}
 
-确认信息：
-{json.dumps(request.confirmed_info, ensure_ascii=False, indent=2)}
-
-请生成标准的临床试验方案章节目录，要求：
-1. 共10个主要章节
-2. 每个章节下有3-5个子章节
-3. 只返回章节标题，不要描述内容
-4. 返回JSON数组格式
+返回格式示例：
+[
+  {{"title": "1. 研究背景与目的", "subsections": ["1.1 ...", "1.2 ..."]}},
+  ...
+]
 """
 
             yield f"data: {json.dumps({'type': 'system_prompt', 'content': outline_prompt})}\n\n"
@@ -2048,6 +2047,7 @@ async def generate_outline_stream(request: OutlineGenerationRequest):
     )
 
 
+# 最终版本的流式大纲生成接口
 @app.post("/generate_outline_stream")
 async def generate_outline_stream(request: OutlineGenerationRequest):
     """步骤2：流式生成协议大纲"""
@@ -2056,18 +2056,16 @@ async def generate_outline_stream(request: OutlineGenerationRequest):
 
     async def generate():
         try:
-            system_prompt = "你是一位临床试验方案撰写专家。请生成符合ICH-GCP标准的临床试验方案章节目录。"
+            system_prompt = "你是一位临床试验方案撰写专家。请生成符合ICH-GCP标准的临床试验方案目录。"
             outline_prompt = f"""
-基于以下确认的临床试验信息，生成一个完整的临床试验方案大纲：
+基于以下确认的临床试验信息，生成协议目录，仅需标题：
+{json.dumps(request.confirmed_info, ensure_ascii=False)}
 
-确认信息：
-{json.dumps(request.confirmed_info, ensure_ascii=False, indent=2)}
-
-请生成标准的临床试验方案章节目录，要求：
-1. 共10个主要章节
-2. 每个章节下有3-5个子章节
-3. 只返回章节标题，不要描述内容
-4. 返回JSON数组格式
+返回格式示例：
+[
+  {{"title": "1. 研究背景与目的", "subsections": ["1.1 ...", "1.2 ..."]}},
+  ...
+]
 """
 
             yield f"data: {json.dumps({'type': 'system_prompt', 'content': outline_prompt})}\n\n"
@@ -2085,11 +2083,11 @@ async def generate_outline_stream(request: OutlineGenerationRequest):
                 if match:
                     outline = json.loads(match.group())
                 else:
-                    outline = get_standard_outline_template(request.confirmed_info)
+                    outline = get_standard_protocol_outline(request.confirmed_info)
                 yield f"data: {json.dumps({'type': 'outline', 'content': outline})}\n\n"
             except Exception as e:
                 logger.error(f"大纲解析失败: {e}")
-                outline = get_standard_outline_template(request.confirmed_info)
+                outline = get_standard_protocol_outline(request.confirmed_info)
                 yield f"data: {json.dumps({'type': 'outline', 'content': outline})}\n\n"
 
             yield f"data: {json.dumps({'type': 'done', 'content': ''})}\n\n"
@@ -2108,53 +2106,96 @@ def get_standard_protocol_outline(confirmed_info):
     return [
         {
             "title": "1. 研究背景与目的",
-            "content": f"介绍{indication}的疾病背景、{drug_type}的作用机制、研究理论基础和研究目的",
-            "subsections": ["1.1 疾病背景", "1.2 药物介绍", "1.3 研究理论基础", "1.4 研究目的"]
+            "subsections": [
+                "1.1 疾病背景",
+                "1.2 药物介绍",
+                "1.3 研究理论基础",
+                "1.4 研究目的"
+            ]
         },
         {
             "title": "2. 研究设计",
-            "content": f"{study_phase}临床试验的总体设计、研究终点和试验方案概述",
-            "subsections": ["2.1 试验类型与设计", "2.2 主要终点", "2.3 次要终点", "2.4 试验流程图"]
+            "subsections": [
+                "2.1 试验类型与设计",
+                "2.2 主要终点",
+                "2.3 次要终点",
+                "2.4 试验流程图"
+            ]
         },
         {
             "title": "3. 研究人群",
-            "content": "详细的受试者选择标准，包括入选、排除、退出和中止标准",
-            "subsections": ["3.1 入选标准", "3.2 排除标准", "3.3 退出标准", "3.4 中止标准"]
+            "subsections": [
+                "3.1 入选标准",
+                "3.2 排除标准",
+                "3.3 退出标准",
+                "3.4 中止标准"
+            ]
         },
         {
             "title": "4. 研究药物及给药方案",
-            "content": f"{drug_type}的给药方案、剂量设计、给药途径和用药管理",
-            "subsections": ["4.1 试验药物", "4.2 给药方案", "4.3 剂量调整", "4.4 合并用药管理"]
+            "subsections": [
+                "4.1 试验药物",
+                "4.2 给药方案",
+                "4.3 剂量调整",
+                "4.4 合并用药管理"
+            ]
         },
         {
             "title": "5. 研究流程与访视安排",
-            "content": "详细的研究流程、访视时间表和各阶段检查项目",
-            "subsections": ["5.1 研究流程总览", "5.2 筛选期", "5.3 治疗期", "5.4 随访期", "5.5 访视窗口期"]
+            "subsections": [
+                "5.1 研究流程总览",
+                "5.2 筛选期",
+                "5.3 治疗期",
+                "5.4 随访期",
+                "5.5 访视窗口期"
+            ]
         },
         {
             "title": "6. 安全性评估",
-            "content": "全面的安全性监测计划、不良事件处理流程",
-            "subsections": ["6.1 安全性参数", "6.2 不良事件定义与分级", "6.3 严重不良事件", "6.4 剂量限制毒性(DLT)"]
+            "subsections": [
+                "6.1 安全性参数",
+                "6.2 不良事件定义与分级",
+                "6.3 严重不良事件",
+                "6.4 剂量限制毒性(DLT)"
+            ]
         },
         {
             "title": "7. 疗效评估",
-            "content": "疗效评价标准、评估方法和时间点",
-            "subsections": ["7.1 疗效评价标准", "7.2 疗效评估时间点", "7.3 疗效指标定义", "7.4 探索性终点"]
+            "subsections": [
+                "7.1 疗效评价标准",
+                "7.2 疗效评估时间点",
+                "7.3 疗效指标定义",
+                "7.4 探索性终点"
+            ]
         },
         {
             "title": "8. 统计分析计划",
-            "content": "详细的统计分析方法、样本量计算和数据处理计划",
-            "subsections": ["8.1 样本量计算", "8.2 分析数据集", "8.3 统计分析方法", "8.4 期中分析", "8.5 亚组分析"]
+            "subsections": [
+                "8.1 样本量计算",
+                "8.2 分析数据集",
+                "8.3 统计分析方法",
+                "8.4 期中分析",
+                "8.5 亚组分析"
+            ]
         },
         {
             "title": "9. 数据管理与质量控制",
-            "content": "数据管理流程、质量保证措施和监查计划",
-            "subsections": ["9.1 数据采集与管理", "9.2 质量保证", "9.3 临床监查", "9.4 稽查"]
+            "subsections": [
+                "9.1 数据采集与管理",
+                "9.2 质量保证",
+                "9.3 临床监查",
+                "9.4 稽查"
+            ]
         },
         {
             "title": "10. 伦理、法规与管理",
-            "content": "伦理审查要求、知情同意流程、受试者保护和法规符合性",
-            "subsections": ["10.1 伦理委员会审查", "10.2 知情同意", "10.3 受试者保护", "10.4 方案偏离处理", "10.5 研究终止"]
+            "subsections": [
+                "10.1 伦理委员会审查",
+                "10.2 知情同意",
+                "10.3 受试者保护",
+                "10.4 方案偏离处理",
+                "10.5 研究终止"
+            ]
         }
     ]
 
