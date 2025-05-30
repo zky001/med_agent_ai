@@ -54,6 +54,9 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeChat();
     setupFileUploadListeners();
     loadKnowledgeStats();
+
+    // 加载已保存的方案内容
+    loadSavedContent();
     
     // 确保配置正确应用
     setTimeout(() => {
@@ -1823,6 +1826,7 @@ async function generateCurrentSection() {
         }
 
         smartGenerationState.content += accumulated;
+        saveCurrentContent();
         smartGenerationState.currentModuleIndex++;
         if (generatedCharsEl) generatedCharsEl.textContent = smartGenerationState.content.length;
         if (completedModulesEl) completedModulesEl.textContent = smartGenerationState.currentModuleIndex;
@@ -1878,6 +1882,7 @@ async function startSimulatedGeneration() {
     // 生成完成
     updateGenerationMonitor('生成完成', modules.length, modules.length);
     smartGenerationState.content = generatedContent;
+    saveCurrentContent();
     
     // 显示导出选项
     showExportOptions();
@@ -2050,6 +2055,61 @@ window.copySmartResult = function() {
             showToast('复制失败', 'error');
         }
         document.body.removeChild(textArea);
+    }
+};
+
+// 兼容旧名称
+window.exportProtocol = function(format) {
+    exportSmartResult(format);
+};
+
+window.copyProtocolContent = function() {
+    copySmartResult();
+};
+
+// 保存和加载生成内容
+function saveCurrentContent() {
+    localStorage.setItem('savedProtocolContent', smartGenerationState.content || '');
+}
+
+function loadSavedContent() {
+    const saved = localStorage.getItem('savedProtocolContent');
+    if (saved) {
+        smartGenerationState.content = saved;
+        updateContentDisplay(saved);
+    }
+}
+
+// 打开内容编辑器
+window.openContentEditor = function() {
+    const modal = document.getElementById('content-editor-modal');
+    const textarea = document.getElementById('content-editor-text');
+    if (modal && textarea) {
+        textarea.value = smartGenerationState.content || '';
+        textarea.addEventListener('input', handleEditorInput);
+        modal.style.display = 'flex';
+        document.body.classList.add('modal-open');
+    }
+};
+
+function handleEditorInput() {
+    const textarea = document.getElementById('content-editor-text');
+    if (!textarea) return;
+    smartGenerationState.content = textarea.value;
+    saveCurrentContent();
+    updateContentDisplay(smartGenerationState.content);
+}
+
+// 关闭编辑器
+window.closeContentEditor = function() {
+    const modal = document.getElementById('content-editor-modal');
+    const textarea = document.getElementById('content-editor-text');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.classList.remove('modal-open');
+    }
+    if (textarea) {
+        textarea.removeEventListener('input', handleEditorInput);
     }
 };
 

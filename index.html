@@ -664,9 +664,13 @@
                                                 <i class="fas fa-file-pdf"></i>
                                                 导出PDF
                                             </button>
-                                            <button class="btn btn-info" onclick="copyProtocolContent()">
+                                            <button class="btn btn-info" onclick="copySmartResult()">
                                                 <i class="fas fa-copy"></i>
                                                 复制全文
+                                            </button>
+                                            <button class="btn btn-warning" onclick="openContentEditor()">
+                                                <i class="fas fa-edit"></i>
+                                                编辑内容
                                             </button>
                                         </div>
                                     </div>
@@ -859,6 +863,21 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Editor Modal -->
+        <div id="content-editor-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2><i class="fas fa-edit"></i> 编辑方案内容</h2>
+                    <button class="close-btn" onclick="closeContentEditor()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <textarea id="content-editor-text" class="smart-textarea" rows="20"></textarea>
                 </div>
             </div>
         </div>
