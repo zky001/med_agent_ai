@@ -1664,6 +1664,53 @@ window.startStepwiseGeneration = async function() {
     renderModuleControls();
 };
 
+// 一键生成当前剩余章节
+window.generateAllSections = async function() {
+    if (smartGenerationState.isGenerating) {
+        showToast('正在生成中，请稍候...', 'warning');
+        return;
+    }
+
+    smartGenerationState.isGenerating = true;
+    while (smartGenerationState.currentModuleIndex < (smartGenerationState.generatedOutline?.length || 0)) {
+        await generateCurrentSection();
+    }
+};
+
+// 从目录直接开始一键生成全文
+window.startAutoGeneration = async function() {
+    if (smartGenerationState.isGenerating) {
+        showToast('正在生成中，请稍候...', 'warning');
+        return;
+    }
+
+    smartGenerationState.isGenerating = true;
+    smartGenerationState.currentModuleIndex = 0;
+    smartGenerationState.content = '';
+
+    switchGenerationStep(4);
+
+    const welcomeSection = document.querySelector('.right-panel .welcome-message');
+    const contentContainer = document.querySelector('.right-panel .content-container');
+    if (welcomeSection) welcomeSection.style.display = 'none';
+    if (contentContainer) {
+        contentContainer.style.display = 'block';
+        contentContainer.innerHTML = '<div class="content-viewer"><div class="prompt-viewer" id="prompt-viewer"></div><div id="streaming-content"></div></div>';
+    }
+
+    const totalModules = smartGenerationState.generatedOutline ? smartGenerationState.generatedOutline.length : 0;
+    const totalModulesEl = document.getElementById('total-modules');
+    const completedModulesEl = document.getElementById('completed-modules');
+    const generatedCharsEl = document.getElementById('generated-chars');
+    if (totalModulesEl) totalModulesEl.textContent = totalModules;
+    if (completedModulesEl) completedModulesEl.textContent = 0;
+    if (generatedCharsEl) generatedCharsEl.textContent = 0;
+
+    while (smartGenerationState.currentModuleIndex < (smartGenerationState.generatedOutline?.length || 0)) {
+        await generateCurrentSection();
+    }
+};
+
 function renderModuleControls() {
     const index = smartGenerationState.currentModuleIndex;
     const section = smartGenerationState.generatedOutline && smartGenerationState.generatedOutline[index];
