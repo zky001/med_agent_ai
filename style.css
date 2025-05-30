@@ -1163,6 +1163,13 @@ body {
     padding: var(--spacing-lg);
 }
 
+.modal-actions {
+    margin-top: var(--spacing-md);
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-sm);
+}
+
 .modal-tabs {
     display: flex;
     gap: var(--spacing-sm);
