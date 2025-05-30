@@ -2404,7 +2404,8 @@ async def generate_protocol_stream(request: ProtocolStreamRequest):
                             knowledge_results.extend(search_result['results'])
             
             # 2. 按照大纲逐个模块生成内容
-            full_content = ""
+            template_prefix = request.settings.get('template', '') or ''
+            full_content = template_prefix
             total_sections = len(request.outline)
             
             for idx, section in enumerate(request.outline):

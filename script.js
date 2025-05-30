@@ -1709,7 +1709,10 @@ async function generateCurrentSection() {
                 section: section,
                 knowledge_types: selectedTypes,
                 custom_prompt: customPrompt,
-                settings: { detail_level: parseInt(document.getElementById('smart-creativity')?.value || 30) / 100 }
+                settings: {
+                    detail_level: parseInt(document.getElementById('smart-creativity')?.value || 30) / 100,
+                    template: document.getElementById('generation-template')?.value || ''
+                }
             })
         });
 
@@ -1717,12 +1720,16 @@ async function generateCurrentSection() {
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        let leftover = '';
 
         while (true) {
             const { value, done } = await reader.read();
             if (done) break;
-            const chunk = decoder.decode(value);
-            chunk.split('\n').forEach(line => {
+            leftover += decoder.decode(value, { stream: true });
+            const lines = leftover.split('\n');
+            leftover = lines.pop();
+            lines.forEach(line => {
+                line = line.trim();
                 if (line.startsWith('data: ')) {
                     const data = JSON.parse(line.slice(6));
                     if (data.error) {
@@ -2558,6 +2565,9 @@ async function startRealStreamGeneration() {
     const streamingContent = document.getElementById('streaming-content');
     const progressFill = document.getElementById('progress-fill');
     const progressText = document.getElementById('progress-text');
+
+    const totalSections = smartGenerationState.generatedOutline ? smartGenerationState.generatedOutline.length : 0;
+    updateGenerationMonitor('准备生成...', 0, totalSections, 0);
     
     try {
         const response = await fetch(`${API_BASE_URL}/generate_protocol_stream`, {
@@ -2571,7 +2581,8 @@ async function startRealStreamGeneration() {
                 settings: {
                     detail_level: parseInt(document.getElementById('smart-creativity')?.value || 30) / 100,
                     include_references: document.getElementById('smart-include-literature')?.checked || true,
-                    include_quality_check: document.getElementById('smart-include-quality')?.checked || true
+                    include_quality_check: document.getElementById('smart-include-quality')?.checked || true,
+                    template: document.getElementById('generation-template')?.value || ''
                 }
             })
         });
@@ -2605,6 +2616,12 @@ async function startRealStreamGeneration() {
                             const percent = Math.round(data.progress * 100);
                             progressFill.style.width = `${percent}%`;
                             progressText.textContent = data.current_module || `生成进度: ${percent}%`;
+                            updateGenerationMonitor(
+                                data.current_module || '生成中...',
+                                data.progress * totalSections,
+                                totalSections,
+                                accumulatedContent.length
+                            );
                         }
                         
                         // 更新内容
@@ -2631,6 +2648,7 @@ async function startRealStreamGeneration() {
                             console.log('✅ 生成完成');
                             smartGenerationState.content = accumulatedContent;
                             progressText.textContent = '生成完成！';
+                            updateGenerationMonitor('生成完成', totalSections, totalSections, accumulatedContent.length);
                             
                             // 隐藏进度条
                             setTimeout(() => {
@@ -2706,7 +2724,7 @@ window.testExtractAPI = async function(testText = "设计一项TCR-T细胞药物
 };
 
 // 更新生成监控显示（适配真实API）
-function updateGenerationMonitor(message, progress = 0, total = 100) {
+function updateGenerationMonitor(message, progress = 0, total = 100, charCount = null) {
     const currentModuleEl = document.getElementById('current-module');
     const completedModulesEl = document.getElementById('completed-modules');
     const totalModulesEl = document.getElementById('total-modules');
@@ -2723,10 +2741,14 @@ function updateGenerationMonitor(message, progress = 0, total = 100) {
     
     if (completedModulesEl) completedModulesEl.textContent = Math.floor(progress);
     if (totalModulesEl) totalModulesEl.textContent = total;
-    
+
     // 更新字符数统计
-    if (generatedCharsEl && smartGenerationState.content) {
-        generatedCharsEl.textContent = smartGenerationState.content.length;
+    if (generatedCharsEl) {
+        if (charCount !== null) {
+            generatedCharsEl.textContent = charCount;
+        } else if (smartGenerationState.content) {
+            generatedCharsEl.textContent = smartGenerationState.content.length;
+        }
     }
 }
 
