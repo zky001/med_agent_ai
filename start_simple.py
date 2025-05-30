@@ -2497,6 +2497,7 @@ async def generate_protocol_stream(request: ProtocolStreamRequest):
 async def generate_section_stream(request: SectionStreamRequest):
     """逐步生成单个章节内容"""
     from fastapi.responses import StreamingResponse
+    import asyncio
 
     async def stream():
         try:
