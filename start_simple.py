@@ -2374,6 +2374,7 @@ def get_module_generation_prompt(module_name, confirmed_info, knowledge_context=
     if module_template:
         prompt += f"\n\n参考模板：\n{module_template}"
     elif REFERENCE_TEMPLATE:
+
         prompt += f"\n\n参考模板：\n{REFERENCE_TEMPLATE}"
 
     return prompt
