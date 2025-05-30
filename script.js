@@ -1092,8 +1092,11 @@ window.toggleSettings = function() {
 
 // 全局函数绑定 - 流程相关
 window.renderProcessCharts = function() {
-    // 渲染流程图表的函数
     console.log('渲染流程图表');
+    if (typeof mermaid !== 'undefined') {
+        const diagrams = document.querySelectorAll('#process .mermaid');
+        mermaid.init(undefined, diagrams);
+    }
 };
 
 // 全局函数绑定 - 模态框相关
@@ -1775,6 +1778,7 @@ function renderModuleControls() {
     const btn = document.getElementById('generate-section-btn');
     const stepHeaderTitle = document.querySelector('#step-4 .step-header-content h3');
 
+
     if (!section) {
         titleEl.textContent = '全部章节生成完成';
         kbOptions.innerHTML = '';
@@ -2195,7 +2199,7 @@ window.openPromptEditor = async function() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    confirmed_info: smartGenerationState.confirmedInfo || smartGenerationState.extractedInfo || {},
+                    confirmed_info: smartGenerationState.confirmedInfo,
                     section: section,
                     knowledge_types: selectedTypes
                 })
