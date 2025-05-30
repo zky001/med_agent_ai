@@ -2111,7 +2111,7 @@ window.openContentEditor = function() {
     if (modal && textarea) {
         textarea.value = smartGenerationState.content || '';
         textarea.addEventListener('input', handleEditorInput);
-        modal.style.display = 'flex';
+        modal.classList.add('active');
         document.body.classList.add('modal-open');
     }
 };
@@ -2129,6 +2129,7 @@ window.closeContentEditor = function() {
     const modal = document.getElementById('content-editor-modal');
     const textarea = document.getElementById('content-editor-text');
     if (modal) {
+        modal.classList.remove('active');
         modal.style.display = 'none';
         document.body.classList.remove('modal-open');
     }
@@ -2141,12 +2142,18 @@ window.closeContentEditor = function() {
 window.openPromptEditor = function() {
     const index = smartGenerationState.currentModuleIndex;
     editingPromptIndex = index;
-    const prompt = smartGenerationState.sectionPrompts[index] || '';
+    let prompt = smartGenerationState.sectionPrompts[index];
+    if (!prompt) {
+        const viewer = document.getElementById('prompt-viewer');
+        if (viewer) {
+            prompt = viewer.textContent.trim();
+        }
+    }
     const modal = document.getElementById('prompt-editor-modal');
     const textarea = document.getElementById('prompt-modal-text');
     if (modal && textarea) {
-        textarea.value = prompt;
-        modal.style.display = 'flex';
+        textarea.value = prompt || '';
+        modal.classList.add('active');
         document.body.classList.add('modal-open');
     }
 };
@@ -2154,6 +2161,7 @@ window.openPromptEditor = function() {
 window.cancelPromptEdit = function() {
     const modal = document.getElementById('prompt-editor-modal');
     if (modal) {
+        modal.classList.remove('active');
         modal.style.display = 'none';
         document.body.classList.remove('modal-open');
     }
@@ -2185,7 +2193,7 @@ window.handlePromptFile = function(event) {
         const textarea = document.getElementById('prompt-modal-text');
         if (modal && textarea) {
             textarea.value = text;
-            modal.style.display = 'flex';
+            modal.classList.add('active');
             document.body.classList.add('modal-open');
         }
     };
