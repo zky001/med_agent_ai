@@ -1652,6 +1652,15 @@ window.startStepwiseGeneration = async function() {
         contentContainer.innerHTML = '<div class="content-viewer"><div class="prompt-viewer" id="prompt-viewer"></div><div id="streaming-content"></div></div>';
     }
 
+    // 初始化进度与统计
+    const totalModules = smartGenerationState.generatedOutline ? smartGenerationState.generatedOutline.length : 0;
+    const totalModulesEl = document.getElementById('total-modules');
+    const completedModulesEl = document.getElementById('completed-modules');
+    const generatedCharsEl = document.getElementById('generated-chars');
+    if (totalModulesEl) totalModulesEl.textContent = totalModules;
+    if (completedModulesEl) completedModulesEl.textContent = 0;
+    if (generatedCharsEl) generatedCharsEl.textContent = 0;
+
     renderModuleControls();
 };
 
@@ -1697,8 +1706,13 @@ async function generateCurrentSection() {
 
     const streamingContent = document.getElementById('streaming-content');
     const btn = document.getElementById('generate-section-btn');
+    const completedModulesEl = document.getElementById('completed-modules');
+    const generatedCharsEl = document.getElementById('generated-chars');
     btn.disabled = true;
     resetLiveContent();
+    // 显示加载圆圈3秒钟
+    showLoading('正在生成本章节...');
+    setTimeout(hideLoading, 3000);
 
     try {
         const response = await fetch(`${API_BASE_URL}/generate_section_stream`, {
@@ -1747,6 +1761,7 @@ async function generateCurrentSection() {
 
                 if (data.content) {
                     accumulated += data.content;
+                    if (generatedCharsEl) generatedCharsEl.textContent = (smartGenerationState.content.length + accumulated.length);
                 }
 
                 if (data.content || data.section_start) {
@@ -1760,7 +1775,10 @@ async function generateCurrentSection() {
             }
         }
 
+        smartGenerationState.content += accumulated;
         smartGenerationState.currentModuleIndex++;
+        if (generatedCharsEl) generatedCharsEl.textContent = smartGenerationState.content.length;
+        if (completedModulesEl) completedModulesEl.textContent = smartGenerationState.currentModuleIndex;
         renderModuleControls();
     } catch (err) {
         console.error('生成章节失败:', err);
