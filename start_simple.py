@@ -1498,6 +1498,11 @@ class SectionStreamRequest(BaseModel):
     custom_prompt: Optional[str] = None
     settings: Dict[str, Any] = {}
 
+class SectionPromptRequest(BaseModel):
+    confirmed_info: Dict[str, Any]
+    section: Dict[str, Any]
+    knowledge_types: List[str] = []
+
 class ExportProtocolRequest(BaseModel):
     content: str
     format: str
@@ -2516,6 +2521,21 @@ async def generate_protocol_stream(request: ProtocolStreamRequest):
             "Access-Control-Allow-Origin": "*"
         }
     )
+
+
+@app.post("/get_section_prompt")
+async def get_section_prompt(request: SectionPromptRequest):
+    """返回生成指定章节默认提示词"""
+    knowledge_results = []
+    if request.knowledge_types:
+        query = f"{request.confirmed_info.get('drug_type', '')} {request.confirmed_info.get('indication', '')} {request.section.get('title', '')}"
+        search = await search_knowledge_embedding(query, top_k=3, types=request.knowledge_types)
+        if search['success']:
+            knowledge_results.extend(search['results'])
+    prompt = generate_protocol_with_knowledge_enhancement(
+        request.section['title'], request.confirmed_info, knowledge_results[:3]
+    )
+    return {"prompt": prompt}
 
 
 @app.post("/generate_section_stream")
