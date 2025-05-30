@@ -10,16 +10,32 @@ from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
 import json
 import uvicorn
-import requests
 import os
 import shutil
-from pathlib import Path
-import numpy as np
-import chardet
-import logging
-import sys
 from module_templates import MODULE_TEMPLATES
 from datetime import datetime
+import requests
+
+from logging_setup import setup_logging
+from config import (
+    current_config,
+    embedded_documents,
+    uploaded_files,
+    knowledge_stats,
+    UPLOAD_DIR,
+    generation_history,
+)
+from file_utils import (
+    read_file_with_encoding_detection,
+    chunk_text,
+    extract_text_from_file,
+)
+from embedding_utils import cosine_similarity, get_embedding
+from llm_interface import call_local_llm, call_local_llm_stream
+from knowledge_store import search_knowledge_embedding
+from data_persistence import save_data
+
+logger = setup_logging()
 
 # 导入真实协议生成器
 try:
@@ -27,35 +43,6 @@ try:
 except ImportError:
     print("警告：无法导入真实协议生成器，使用简化版本")
     RealProtocolGenerator = None
-
-# 首先配置根日志记录器
-root_logger = logging.getLogger()
-root_logger.setLevel(logging.INFO)
-
-# 清除现有的处理器
-for handler in root_logger.handlers[:]:
-    root_logger.removeHandler(handler)
-
-# 创建新的处理器
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-# 设置格式
-formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-console_handler.setFormatter(formatter)
-
-# 添加处理器到根日志记录器
-root_logger.addHandler(console_handler)
-
-# 创建应用特定的logger
-logger = logging.getLogger("medical_ai_agent")
-logger.setLevel(logging.INFO)
-
-# 测试日志是否工作
-logger.info("🚀 日志系统初始化完成")
-print("如果你看到这行但看不到上面的日志，说明日志配置有问题", flush=True)
 
 # 临床试验方案生成时参考的示例模板，可用于指导段落的写作格式
 REFERENCE_TEMPLATE = """
@@ -71,54 +58,6 @@ IPM514设计为通用型mRNA疫苗，包含食管鳞癌相关TAA的多个表位�
 1.2 非临床总结
 动物研究显示IPM514可诱导特异性T细胞并抑制肿瘤生长，耐受性良好。
 """
-
-# 添加智能文件编码检测函数
-def read_file_with_encoding_detection(file_path):
-    """智能检测文件编码并读取文件内容"""
-    try:
-        # 1. 首先读取文件的原始字节数据进行编码检测
-        with open(file_path, 'rb') as f:
-            raw_data = f.read()
-        
-        # 2. 使用chardet检测编码
-        detected = chardet.detect(raw_data)
-        confidence = detected.get('confidence', 0)
-        encoding = detected.get('encoding', 'utf-8')
-        logger.info(f"📄 [编码检测] 文件: {file_path.name}")
-        logger.info(f"   检测到编码: {encoding} (置信度: {confidence:.2f})")
-        
-        # 3. 如果置信度较高，使用检测到的编码
-        if confidence > 0.7 and encoding:
-            try:
-                content = raw_data.decode(encoding)
-                logger.info(f"   ✅ 使用检测编码 {encoding} 成功读取")
-                return content
-            except (UnicodeDecodeError, LookupError) as e:
-                logger.warning(f"   ❌ 检测编码 {encoding} 读取失败: {e}")
-        
-        # 4. 如果检测失败或置信度不高，尝试常见编码
-        common_encodings = ['utf-8', 'gbk', 'gb2312', 'utf-16', 'utf-16le', 'utf-16be', 'latin1', 'cp1252']
-        
-        for enc in common_encodings:
-            try:
-                content = raw_data.decode(enc)
-                logger.info(f"   ✅ 使用备选编码 {enc} 成功读取")
-                return content
-            except (UnicodeDecodeError, LookupError):
-                continue
-        
-        # 5. 如果所有编码都失败，使用错误处理方式
-        try:
-            content = raw_data.decode('utf-8', errors='replace')
-            logger.warning(f"   ⚠️ 使用UTF-8错误替换模式读取")
-            return content
-        except Exception as e:
-            logger.error(f"   ❌ 所有编码尝试失败: {e}")
-            return f"无法读取文件内容: 编码检测失败"
-    
-    except Exception as e:
-        logger.error(f"   💥 文件读取异常: {e}")
-        return f"无法读取原始文件: {str(e)}"
 
 # 创建FastAPI应用
 app = FastAPI(
@@ -147,366 +86,6 @@ class ProtocolGenerationRequest(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     temperature: float = 0.3
-
-# 全局配置
-current_config = {
-    "llm": {
-        "type": "local",
-        "url": "https://v1.voct.top/v1",
-        "model": "gpt-4.1-mini",
-        "key": "EMPTY",
-        "temperature": 0.3
-    },
-    "embedding": {
-        "type": "local-api",
-        "url": "http://192.168.196.151:9998/v1",
-        "key": "EMPTY",
-        "model": "bge-large-zh-v1.5",  # 自动获取第一个可用模型
-        "dimension": 1024  # 默认维度
-    }
-}
-
-# 全局变量 - 向量数据库
-embedded_documents = []  # 存储文档和对应的embedding向量
-uploaded_files = []  # 存储上传的文件信息
-knowledge_stats = {
-    "临床试验方案示例": {"document_count": 5},
-    "肿瘤临床指南": {"document_count": 8}, 
-    "医学文献": {"document_count": 12},
-    "CGT药物研发资料": {"document_count": 6},
-    "Excel数据表": {"document_count": 3},
-    "用户上传文档": {"document_count": 0}
-}
-generation_history = []
-
-# 确保上传目录存在
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
-
-# 向量相似度计算函数
-def cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
-    """计算两个向量的余弦相似度"""
-    try:
-        # 转换为numpy数组
-        v1 = np.array(vec1)
-        v2 = np.array(vec2)
-        
-        # 计算余弦相似度
-        dot_product = np.dot(v1, v2)
-        norm_v1 = np.linalg.norm(v1)
-        norm_v2 = np.linalg.norm(v2)
-        
-        if norm_v1 == 0 or norm_v2 == 0:
-            return 0.0
-        
-        similarity = dot_product / (norm_v1 * norm_v2)
-        return float(similarity)
-    except Exception as e:
-        logger.warning(f"计算相似度失败: {e}")
-        return 0.0
-
-# 真正的embedding函数
-def get_embedding(text: str) -> List[float]:
-    """调用配置的embedding API获取文本向量"""
-    try:
-        if current_config["embedding"]["type"] == "local-api":
-            headers = {
-                "Authorization": f"Bearer {current_config['embedding']['key']}",
-                "Content-Type": "application/json"
-            }
-            
-            # 使用配置中的模型名称
-            model_name = current_config['embedding']['model']
-            if model_name == "auto":
-                # 尝试获取第一个可用模型
-                try:
-                    models_response = requests.get(
-                        f"{current_config['embedding']['url']}/models",
-                        headers=headers,
-                        timeout=10
-                    )
-                    if models_response.status_code == 200:
-                        models_data = models_response.json()
-                        if models_data.get('data') and len(models_data['data']) > 0:
-                            model_name = models_data['data'][0]['id']
-                        elif models_data.get('models') and len(models_data['models']) > 0:
-                            model_name = models_data['models'][0]['id']
-                        else:
-                            model_name = "text-embedding-ada-002"  # 默认模型
-                except:
-                    model_name = "text-embedding-ada-002"  # 降级默认
-            
-            data = {
-                "model": model_name,
-                "input": [text]
-            }
-            
-            response = requests.post(
-                f"{current_config['embedding']['url']}/embeddings",
-                headers=headers,
-                json=data,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                
-                # 处理不同的API响应格式
-                if 'data' in result and len(result['data']) > 0:
-                    if 'embedding' in result['data'][0]:
-                        return result['data'][0]['embedding']
-                elif 'embeddings' in result and len(result['embeddings']) > 0:
-                    return result['embeddings'][0]
-                elif 'embedding' in result:
-                    return result['embedding']
-                
-                raise ValueError(f"无法解析embedding响应: {result}")
-            else:
-                raise ValueError(f"Embedding API调用失败: {response.status_code} - {response.text}")
-        else:
-            # 降级到简单的mock embedding
-            import hashlib
-            # 使用文本hash生成固定维度的伪向量
-            text_hash = hashlib.sha256(text.encode()).hexdigest()
-            # 生成768维向量（常见的embedding维度）
-            fake_embedding = [float(int(text_hash[i:i+2], 16)) / 255.0 - 0.5 for i in range(0, min(len(text_hash), 128), 2)]
-            # 填充到768维
-            while len(fake_embedding) < 768:
-                fake_embedding.extend(fake_embedding[:min(768-len(fake_embedding), len(fake_embedding))])
-            return fake_embedding[:768]
-    except Exception as e:
-        logger.error(f"Embedding生成失败: {e}")
-        logger.warning(f"Embedding生成失败: {e}")
-
-def call_local_llm(message: str, temperature: float = 0.3) -> str:
-    """调用本地LLM模型"""
-    try:
-        # 直接使用requests调用API
-        headers = {
-            "Authorization": f"Bearer {current_config['llm']['key']}",
-            "Content-Type": "application/json"
-        }
-        
-        data = {
-            "model": current_config["llm"]["model"],
-            "messages": [
-                {"role": "system", "content": "你是一个专业的医学AI助手，专门帮助用户处理临床试验方案相关的问题。请用中文回复。"},
-                {"role": "user", "content": message}
-            ],
-            "temperature": temperature,
-            "max_tokens": 1000
-        }
-        
-        response = requests.post(
-            f"{current_config['llm']['url']}/chat/completions",
-            headers=headers,
-            json=data,
-            timeout=60
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            return result["choices"][0]["message"]["content"]
-        else:
-            return f"API调用失败: {response.status_code} - {response.text}"
-            
-    except Exception as e:
-        logger.error(f"LLM调用失败: {e}")
-        return f"抱歉，LLM调用失败: {str(e)}"
-
-def call_local_llm_stream(message: str, temperature: float = 0.3):
-    """流式调用本地LLM模型"""
-    headers = {
-        "Authorization": f"Bearer {current_config['llm']['key']}",
-        "Content-Type": "application/json"
-    }
-
-    data = {
-        "model": current_config["llm"]["model"],
-        "messages": [
-            {"role": "system", "content": "你是一个专业的医学AI助手，专门帮助用户处理临床试验方案相关的问题。请用中文回复。"},
-            {"role": "user", "content": message}
-        ],
-        "temperature": temperature,
-        "max_tokens": 1000,
-        "stream": True
-    }
-
-    try:
-        with requests.post(
-            f"{current_config['llm']['url']}/chat/completions",
-            headers=headers,
-            json=data,
-            stream=True,
-            timeout=60
-        ) as r:
-            if r.status_code != 200:
-                raise ValueError(f"API调用失败: {r.status_code} - {r.text}")
-
-            for line in r.iter_lines():
-                if not line:
-                    continue
-                if line.startswith(b'data:'):
-                    payload = line[5:].strip()
-                    if payload == b"[DONE]":
-                        break
-                    try:
-                        event = json.loads(payload.decode())
-                        delta = event.get("choices", [{}])[0].get("delta", {}).get("content")
-                        if delta:
-                            yield delta
-                    except json.JSONDecodeError:
-                        continue
-    except Exception as e:
-        logger.error(f"LLM流式调用失败: {e}")
-        raise
-
-def call_local_llm_stream(message: str, system_prompt: str = None, temperature: float = 0.3):
-    """流式调用本地LLM模型，直接转发模型的流式输出"""
-    headers = {
-        "Authorization": f"Bearer {current_config['llm']['key']}",
-        "Content-Type": "application/json"
-    }
-
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    else:
-        messages.append({"role": "system", "content": "你是一个专业的医学AI助手，专门帮助用户处理临床试验方案相关的问题。请用中文回复。"})
-    messages.append({"role": "user", "content": message})
-
-    data = {
-        "model": current_config["llm"]["model"],
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": 2000,
-        "stream": True
-    }
-
-    try:
-        with requests.post(
-            f"{current_config['llm']['url']}/chat/completions",
-            headers=headers,
-            json=data,
-            stream=True,
-            timeout=60
-        ) as r:
-            if r.status_code != 200:
-                raise ValueError(f"API调用失败: {r.status_code} - {r.text}")
-
-            for line in r.iter_lines():
-                if not line:
-                    continue
-                if line.startswith(b'data:'):
-                    payload = line[5:].strip()
-                    if payload == b"[DONE]":
-                        break
-                    try:
-                        event = json.loads(payload.decode())
-                        delta = event.get("choices", [{}])[0].get("delta", {}).get("content")
-                        if delta:
-                            yield delta
-                    except json.JSONDecodeError:
-                        continue
-    except Exception as e:
-        logger.error(f"LLM流式调用失败: {e}")
-        raise
-
-def call_local_llm_stream(message: str, system_prompt: str = None, temperature: float = 0.3):
-    """流式调用本地LLM模型，直接转发生成的token"""
-    headers = {
-        "Authorization": f"Bearer {current_config['llm']['key']}",
-        "Content-Type": "application/json"
-    }
-
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": message})
-
-    data = {
-        "model": current_config["llm"]["model"],
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": 2000,
-        "stream": True
-    }
-
-    try:
-        with requests.post(
-            f"{current_config['llm']['url']}/chat/completions",
-            headers=headers,
-            json=data,
-            stream=True,
-            timeout=60
-        ) as r:
-            if r.status_code != 200:
-                raise ValueError(f"API调用失败: {r.status_code} - {r.text}")
-
-            for line in r.iter_lines():
-                if not line:
-                    continue
-                if line.startswith(b'data:'):
-                    payload = line[5:].strip()
-                    if payload == b"[DONE]":
-                        break
-                    try:
-                        event = json.loads(payload.decode())
-                        delta = event.get("choices", [{}])[0].get("delta", {}).get("content")
-                        if delta:
-                            yield delta
-                    except json.JSONDecodeError:
-                        continue
-    except Exception as e:
-        logger.error(f"LLM流式调用失败: {e}")
-        raise
-
-def call_local_llm_stream(message: str, temperature: float = 0.3):
-    """以流式方式调用本地LLM模型，逐步返回内容"""
-    headers = {
-        "Authorization": f"Bearer {current_config['llm']['key']}",
-        "Content-Type": "application/json"
-    }
-
-    data = {
-        "model": current_config["llm"]["model"],
-        "messages": [
-            {"role": "system", "content": "你是一个专业的医学AI助手，专门帮助用户处理临床试验方案相关的问题。请用中文回复。"},
-            {"role": "user", "content": message}
-        ],
-        "temperature": temperature,
-        "max_tokens": 1000,
-        "stream": True
-    }
-
-    try:
-        with requests.post(
-            f"{current_config['llm']['url']}/chat/completions",
-            headers=headers,
-            json=data,
-            stream=True,
-            timeout=60
-        ) as r:
-            if r.status_code != 200:
-                raise ValueError(f"API调用失败: {r.status_code} - {r.text}")
-
-            for line in r.iter_lines():
-                if not line:
-                    continue
-                if line.startswith(b'data:'):
-                    payload = line[5:].strip()
-                    if payload == b"[DONE]":
-                        break
-                    try:
-                        event = json.loads(payload.decode())
-                        delta = event.get("choices", [{}])[0].get("delta", {}).get("content")
-                        if delta:
-                            yield delta
-                    except json.JSONDecodeError:
-                        continue
-    except Exception as e:
-        logger.error(f"LLM流式调用失败: {e}")
-        raise
 
 @app.get("/")
 async def root():
@@ -908,42 +487,6 @@ async def generate_protocol_simplified(request: ProtocolGenerationRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"简化生成失败: {str(e)}")
 
-# 适配器函数：将embedding搜索接口适配给生成器
-async def search_knowledge_embedding(query: str, top_k: int = 5, types: Optional[List[str]] = None):
-    """适配器函数：为生成器提供embedding搜索功能"""
-    try:
-        if not embedded_documents:
-            return {"success": True, "results": []}
-        
-        # 获取查询文本的向量
-        query_embedding = get_embedding(query)
-        
-        # 计算与所有文档的相似度
-        results = []
-        for doc in embedded_documents:
-            if types and doc['knowledge_type'] not in types:
-                continue
-            similarity = cosine_similarity(query_embedding, doc['embedding'])
-
-            if similarity > 0.1:
-                results.append({
-                    "knowledge_type": doc["knowledge_type"],
-                    "content": doc["content"],
-                    "metadata": doc["metadata"],
-                    "score": similarity
-                })
-        
-        # 按相似度排序并返回top_k结果
-        results.sort(key=lambda x: x['score'], reverse=True)
-        
-        return {
-            "success": True, 
-            "results": results[:top_k]
-        }
-        
-    except Exception as e:
-        logger.error(f"向量搜索适配器失败: {e}")
-        return {"success": False, "results": []}
     
 
 @app.get("/knowledge/stats")
@@ -1020,163 +563,6 @@ async def search_knowledge(query: str, top_k: int = 5):
         raise HTTPException(status_code=400, detail=f"向量搜索失败: {str(e)}")
 
 # 添加文本分块功能
-def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
-    """将文本分割为重叠的块"""
-    if len(text) <= chunk_size:
-        return [text]
-    
-    chunks = []
-    start = 0
-    
-    while start < len(text):
-        end = start + chunk_size
-        
-        # 如果不是最后一块，尝试在句号处分割
-        if end < len(text):
-            # 在句号、问号、感叹号处寻找自然分割点
-            for i in range(end, max(start + chunk_size // 2, start + 1), -1):
-                if text[i-1] in '。！？.!?':
-                    end = i
-                    break
-        
-        chunk = text[start:end].strip()
-        if chunk:
-            chunks.append(chunk)
-        
-        # 设置下一个块的开始位置（有重叠）
-        start = end - overlap
-        if start >= len(text):
-            break
-    
-    return chunks
-
-# 简单的文本提取功能
-def extract_text_from_file(file_content: bytes, filename: str) -> List[str]:
-    """从文件内容中提取文本"""
-    file_extension = Path(filename).suffix.lower()
-    
-    try:
-        if file_extension in ['.txt', '.md']:
-            # 文本文件
-            text = file_content.decode('utf-8')
-            paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
-            return paragraphs if paragraphs else [text]
-        
-        elif file_extension == '.csv':
-            # CSV文件
-            import io
-            import csv
-            text_data = file_content.decode('utf-8')
-            reader = csv.reader(io.StringIO(text_data))
-            rows = []
-            for row in reader:
-                if any(cell.strip() for cell in row):  # 跳过空行
-                    rows.append(' | '.join(row))
-            return rows
-        elif file_extension == '.pdf':
-            # PDF文件
-            try:
-                import io
-                import PyPDF2
-                
-                pdf_file = io.BytesIO(file_content)
-                pdf_reader = PyPDF2.PdfReader(pdf_file)
-                pages_text = []
-                for page_num, page in enumerate(pdf_reader.pages):
-                    try:
-                        page_text = page.extract_text()
-                        if page_text.strip():
-                            # 清理和格式化文本
-                            cleaned_text = page_text.replace('\n', ' ').replace('\r', ' ')
-                            # 移除多余的空格和特殊字符
-                            cleaned_text = ' '.join(cleaned_text.split())
-                            
-                            # 更强的PDF乱码清理：移除常见的PDF提取问题字符
-                            import re
-                            # 移除非打印字符和控制字符，但保留中文字符
-                            cleaned_text = re.sub(r'[^\u4e00-\u9fff\u3400-\u4dbf\w\s\.,;:!?\'"()\-\[\]{}@#$%^&*+=<>/\\|`~·。，、；：！？""''（）【】《》]+', '', cleaned_text)
-                            # 移除过多的空格
-                            cleaned_text = re.sub(r'\s+', ' ', cleaned_text)
-                            # 移除重复的标点符号
-                            cleaned_text = re.sub(r'([.。,，;；:：!！?？])\1+', r'\1', cleaned_text)
-                            
-                            if cleaned_text and len(cleaned_text.strip()) > 20:  # 增加到至少20个有效字符
-                                # 限制每页内容长度，避免过长（增加到2000字符）
-                                if len(cleaned_text) > 2000:
-                                    cleaned_text = cleaned_text[:2000] + "..."
-                                pages_text.append(f"第{page_num+1}页: {cleaned_text}")
-                            else:
-                                # 如果清理后内容太短，可能是表格或图片页，保留原始文本的一部分
-                                raw_text = page_text.strip()
-                                if raw_text and len(raw_text) > 10:
-                                    pages_text.append(f"第{page_num+1}页: [可能包含表格或图片] {raw_text[:100]}...")
-                    except Exception as e:
-                        pages_text.append(f"第{page_num+1}页解析错误: {str(e)}")
-                
-                if not pages_text:
-                    return [f"PDF文件 {filename} 无法提取文本内容，可能是扫描版PDF、加密文件或纯图片文档"]
-                
-                return pages_text
-                
-            except ImportError:
-                return [f"PDF解析需要安装PyPDF2库: pip install PyPDF2"]
-            except Exception as e:
-                return [f"PDF文件解析失败: {str(e)}"]
-        
-        elif file_extension in ['.xlsx', '.xls']:
-            # Excel文件
-            try:
-                import io
-                import pandas as pd
-                
-                df = pd.read_excel(io.BytesIO(file_content))
-                rows = []
-                # 处理表头
-                headers = ' | '.join(str(col) for col in df.columns)
-                rows.append(f"表头: {headers}")
-                
-                # 处理数据行
-                for idx, row in df.iterrows():
-                    row_text = ' | '.join(str(val) for val in row.values if pd.notna(val))
-                    if row_text.strip():
-                        rows.append(f"行{idx+1}: {row_text}")
-                
-                return rows if rows else [f"Excel文件 {filename} 为空"]
-                
-            except Exception as e:
-                return [f"Excel文件解析失败: {str(e)}"]
-        
-        elif file_extension == '.docx':
-            # Word文档
-            try:
-                import io
-                from docx import Document
-                
-                doc = Document(io.BytesIO(file_content))
-                paragraphs = []
-                
-                for para in doc.paragraphs:
-                    text = para.text.strip()
-                    if text:
-                        paragraphs.append(text)
-                
-                return paragraphs if paragraphs else [f"Word文档 {filename} 无文本内容"]
-                
-            except ImportError:
-                return [f"Word文档解析需要安装python-docx库: pip install python-docx"]
-            except Exception as e:
-                return [f"Word文档解析失败: {str(e)}"]
-        
-        else:
-            # 尝试作为文本处理
-            try:
-                text = file_content.decode('utf-8')
-                return [text] if text.strip() else [f"文件 {filename} 内容为空"]
-            except UnicodeDecodeError:
-                return [f"不支持的文件格式: {file_extension}，无法解析为文本"]
-            
-    except Exception as e:
-        return [f"文件处理错误: {str(e)}"]
 
 @app.post("/knowledge/upload")
 async def upload_knowledge_file(
@@ -1268,6 +654,7 @@ async def upload_knowledge_file(
         }
         
         uploaded_files.append(file_info)
+        save_data(embedded_documents, uploaded_files)
         
         return {
             "success": True,
@@ -1327,6 +714,7 @@ async def delete_knowledge_file(filename: str):
         file_path = UPLOAD_DIR / filename
         if file_path.exists():
             file_path.unlink()
+        save_data(embedded_documents, uploaded_files)
         
         return {
             "success": True,
