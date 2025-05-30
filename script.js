@@ -25,6 +25,7 @@ let generationInProgress = false;
 let modalListenersInitialized = false;
 let chatHistory = [];
 let availableKnowledgeTypes = [];
+let editingPromptIndex = null;
 
 // HTML转义函数
 function escapeHtml(text) {
@@ -1364,7 +1365,8 @@ let smartGenerationState = {
     generatedOutline: null,
     content: '',
     isGenerating: false,
-    currentModuleIndex: 0
+    currentModuleIndex: 0,
+    sectionPrompts: []
 };
 
 // 确认信息并生成目录
@@ -1759,11 +1761,6 @@ function renderModuleControls() {
     if (outlineEl) {
         outlineEl.textContent = section ? formatOutlineContent(section) : '';
     }
-
-    const editor = document.getElementById('prompt-editor-area');
-    const actions = document.getElementById('prompt-editor-actions');
-    if (editor) editor.style.display = 'none';
-    if (actions) actions.style.display = 'none';
 }
 
 async function generateCurrentSection() {
@@ -1772,7 +1769,12 @@ async function generateCurrentSection() {
     if (!section) return;
 
     const selectedTypes = Array.from(document.querySelectorAll('#kb-options input:checked')).map(el => el.value);
-    const customPrompt = document.getElementById('custom-prompt').value.trim();
+    const customPromptInput = document.getElementById('custom-prompt').value.trim();
+    const editedPrompt = smartGenerationState.sectionPrompts[index];
+    let finalPrompt = customPromptInput;
+    if (editedPrompt) {
+        finalPrompt = editedPrompt + (customPromptInput ? '\n' + customPromptInput : '');
+    }
 
     const streamingContent = document.getElementById('streaming-content');
     const btn = document.getElementById('generate-section-btn');
@@ -1792,7 +1794,7 @@ async function generateCurrentSection() {
                 confirmed_info: smartGenerationState.confirmedInfo,
                 section: section,
                 knowledge_types: selectedTypes,
-                custom_prompt: customPrompt,
+                custom_prompt: finalPrompt,
                 settings: { detail_level: parseInt(document.getElementById('smart-creativity')?.value || 30) / 100 }
             })
         });
@@ -1821,7 +1823,9 @@ async function generateCurrentSection() {
                 }
 
                 if (data.system_prompt || data.type === 'system_prompt') {
-                    showSystemPrompt(data.system_prompt || data.content);
+                    const promptText = data.system_prompt || data.content;
+                    smartGenerationState.sectionPrompts[index] = promptText;
+                    showSystemPrompt(promptText);
                     continue;
                 }
 
@@ -2136,31 +2140,32 @@ window.closeContentEditor = function() {
 // 提示词编辑相关功能
 window.openPromptEditor = function() {
     const index = smartGenerationState.currentModuleIndex;
-    const section = smartGenerationState.generatedOutline && smartGenerationState.generatedOutline[index];
-    if (!section) return;
-    const editor = document.getElementById('prompt-editor-area');
-    const actions = document.getElementById('prompt-editor-actions');
-    if (editor && actions) {
-        editor.value = section.content || '';
-        editor.style.display = 'block';
-        actions.style.display = 'flex';
+    editingPromptIndex = index;
+    const prompt = smartGenerationState.sectionPrompts[index] || '';
+    const modal = document.getElementById('prompt-editor-modal');
+    const textarea = document.getElementById('prompt-modal-text');
+    if (modal && textarea) {
+        textarea.value = prompt;
+        modal.style.display = 'flex';
+        document.body.classList.add('modal-open');
     }
 };
 
 window.cancelPromptEdit = function() {
-    const editor = document.getElementById('prompt-editor-area');
-    const actions = document.getElementById('prompt-editor-actions');
-    if (editor) editor.style.display = 'none';
-    if (actions) actions.style.display = 'none';
+    const modal = document.getElementById('prompt-editor-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.classList.remove('modal-open');
+    }
+    editingPromptIndex = null;
 };
 
 window.savePromptEdit = function() {
-    const index = smartGenerationState.currentModuleIndex;
-    const section = smartGenerationState.generatedOutline && smartGenerationState.generatedOutline[index];
-    const editor = document.getElementById('prompt-editor-area');
-    if (section && editor) {
-        section.content = editor.value;
-        renderSectionOutline();
+    if (editingPromptIndex === null) return;
+    const textarea = document.getElementById('prompt-modal-text');
+    if (textarea) {
+        smartGenerationState.sectionPrompts[editingPromptIndex] = textarea.value;
+        showSystemPrompt(textarea.value);
     }
     window.cancelPromptEdit();
 };
@@ -2176,12 +2181,12 @@ window.handlePromptFile = function(event) {
     const reader = new FileReader();
     reader.onload = function(e) {
         const text = e.target.result;
-        const editor = document.getElementById('prompt-editor-area');
-        const actions = document.getElementById('prompt-editor-actions');
-        if (editor && actions) {
-            editor.value = text;
-            editor.style.display = 'block';
-            actions.style.display = 'flex';
+        const modal = document.getElementById('prompt-editor-modal');
+        const textarea = document.getElementById('prompt-modal-text');
+        if (modal && textarea) {
+            textarea.value = text;
+            modal.style.display = 'flex';
+            document.body.classList.add('modal-open');
         }
     };
     reader.readAsText(file);

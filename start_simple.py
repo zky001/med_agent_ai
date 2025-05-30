@@ -2537,7 +2537,12 @@ async def generate_section_stream(request: SectionStreamRequest):
                 knowledge_context = "\n\n".join([f"【{r['knowledge_type']}】\n{r['content']}" for r in knowledge_results[:3]])
                 prompt = request.custom_prompt + "\n\n" + knowledge_context
             else:
-                prompt = generate_protocol_with_knowledge_enhancement(request.section['title'], request.confirmed_info, knowledge_results[:3])
+                prompt = generate_protocol_with_knowledge_enhancement(
+                    request.section['title'], request.confirmed_info, knowledge_results[:3]
+                )
+
+            # 先发送系统提示词，便于前端展示和编辑
+            yield f"data: {json.dumps({'type': 'system_prompt', 'content': prompt})}\n\n"
 
             for token in call_local_llm_stream(prompt, temperature=request.settings.get('detail_level', 0.3)):
                 yield f"data: {json.dumps({'content': token})}\n\n"
