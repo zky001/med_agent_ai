@@ -2268,7 +2268,7 @@ def get_module_generation_prompt(module_name, confirmed_info, knowledge_context=
 - 次要目的：{', '.join(confirmed_info.get('secondary_objectives', ['初步疗效评估', 'PK/PD特征']))}
 - 探索性目的：生物标志物探索、作用机制验证等
 
-参考知识库：
+内置资料（仅供参考，不在章节中列出文献）：
 {knowledge_context}
 
 {quality_requirements}
@@ -2311,7 +2311,7 @@ def get_module_generation_prompt(module_name, confirmed_info, knowledge_context=
 - 剂量扩展期：{confirmed_info.get('dose_expansion_n', '10-20例')}
 - 统计学假设和计算依据
 
-参考知识库：
+内置资料（仅供参考，不在章节中列出文献）：
 {knowledge_context}
 
 {quality_requirements}
@@ -2363,12 +2363,12 @@ def get_module_generation_prompt(module_name, confirmed_info, knowledge_context=
 ### 3.4 中止标准
 - 连续出现非预期的SAE
 - DSMB建议终止
-- 监管部门要求
+ - 监管部门要求
 
-参考知识库：
-{knowledge_context}
+ 内置资料（仅供参考，不在章节中列出文献）：
+ {knowledge_context}
 
-{quality_requirements}
+ {quality_requirements}
 """
     }
     
@@ -2395,8 +2395,8 @@ def generate_protocol_with_knowledge_enhancement(module_name, confirmed_info, kn
     
     # 获取该模块的生成提示词
     prompt = get_module_generation_prompt(module_name, confirmed_info, knowledge_context)
-    
-    # 添加引用要求
+
+    # 添加引用要求，并告知无需在本章节中列出参考
     prompt += """
 
 重要要求：
@@ -2405,6 +2405,7 @@ def generate_protocol_with_knowledge_enhancement(module_name, confirmed_info, kn
 3. 数据和结论必须有明确来源
 4. 专业术语使用规范，可加注英文
 5. 格式符合医学论文写作规范
+6. 请勿在每个章节单独列出文献，将所有文献汇总到文章末尾。
 """
     
     return prompt
@@ -2419,6 +2420,7 @@ async def generate_protocol_stream(request: ProtocolStreamRequest):
         try:
             # 1. 先进行知识库检索增强
             knowledge_results = []
+            reference_titles = set()
             if request.settings.get('include_references', True):
                 # 基于确认信息构建检索查询
                 search_queries = [
@@ -2426,12 +2428,16 @@ async def generate_protocol_stream(request: ProtocolStreamRequest):
                     f"{request.confirmed_info.get('study_phase', '')} 临床试验设计",
                     f"{request.confirmed_info.get('indication', '')} 入组标准"
                 ]
-                
+
                 for query in search_queries:
                     if query.strip():
                         search_result = await search_knowledge_embedding(query, top_k=3)
                         if search_result['success']:
                             knowledge_results.extend(search_result['results'])
+                            for r in search_result['results']:
+                                title = r.get('metadata', {}).get('title')
+                                if title:
+                                    reference_titles.add(title)
             
             # 2. 按照大纲逐个模块生成内容
             full_content = ""
@@ -2439,13 +2445,17 @@ async def generate_protocol_stream(request: ProtocolStreamRequest):
             
             for idx, section in enumerate(request.outline):
                 # 获取该模块相关的知识
-                relevant_knowledge = [k for k in knowledge_results 
-                                    if any(keyword in k['content'] 
+                relevant_knowledge = [k for k in knowledge_results
+                                    if any(keyword in k['content']
                                           for keyword in section['title'].split())]
+                for r in relevant_knowledge[:3]:
+                    title = r.get('metadata', {}).get('title')
+                    if title:
+                        reference_titles.add(title)
                 
                 # 构建该模块的生成提示词
                 module_prompt = generate_protocol_with_knowledge_enhancement(
-                    section['title'], 
+                    section['title'],
                     request.confirmed_info,
                     relevant_knowledge[:3]
                 )
@@ -2466,7 +2476,15 @@ async def generate_protocol_stream(request: ProtocolStreamRequest):
                 # 模块完成后更新进度并累积内容
                 full_content += f"\n## {section['title']}\n\n{module_tokens}\n"
                 yield f"data: {json.dumps({'progress': (idx + 1) / total_sections})}\n\n"
-            
+
+            # 在所有章节完成后插入统一的参考文献目录
+            if reference_titles:
+                ref_text = "\n## 参考文献\n\n" + "\n".join(
+                    f"{i+1}. {t}" for i, t in enumerate(sorted(reference_titles))
+                ) + "\n"
+                full_content += ref_text
+                yield f"data: {json.dumps({'content': ref_text})}\n\n"
+
             # 3. 质量检查（如果启用）
             if request.settings.get('include_quality_check', True):
                 quality_prompt = f"""
