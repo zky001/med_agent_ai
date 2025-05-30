@@ -18,9 +18,10 @@ current_config = {
     },
 }
 
+from data_persistence import load_data, save_data
+
 # In-memory data stores
-embedded_documents = []
-uploaded_files = []
+embedded_documents, uploaded_files = load_data()
 knowledge_stats = {
     "临床试验方案示例": {"document_count": 5},
     "肿瘤临床指南": {"document_count": 8},

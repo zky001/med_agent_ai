@@ -33,6 +33,7 @@ from file_utils import (
 from embedding_utils import cosine_similarity, get_embedding
 from llm_interface import call_local_llm, call_local_llm_stream
 from knowledge_store import search_knowledge_embedding
+from data_persistence import save_data
 
 logger = setup_logging()
 
@@ -486,42 +487,6 @@ async def generate_protocol_simplified(request: ProtocolGenerationRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"简化生成失败: {str(e)}")
 
-# 适配器函数：将embedding搜索接口适配给生成器
-async def search_knowledge_embedding(query: str, top_k: int = 5, types: Optional[List[str]] = None):
-    """适配器函数：为生成器提供embedding搜索功能"""
-    try:
-        if not embedded_documents:
-            return {"success": True, "results": []}
-        
-        # 获取查询文本的向量
-        query_embedding = get_embedding(query)
-        
-        # 计算与所有文档的相似度
-        results = []
-        for doc in embedded_documents:
-            if types and doc['knowledge_type'] not in types:
-                continue
-            similarity = cosine_similarity(query_embedding, doc['embedding'])
-
-            if similarity > 0.1:
-                results.append({
-                    "knowledge_type": doc["knowledge_type"],
-                    "content": doc["content"],
-                    "metadata": doc["metadata"],
-                    "score": similarity
-                })
-        
-        # 按相似度排序并返回top_k结果
-        results.sort(key=lambda x: x['score'], reverse=True)
-        
-        return {
-            "success": True, 
-            "results": results[:top_k]
-        }
-        
-    except Exception as e:
-        logger.error(f"向量搜索适配器失败: {e}")
-        return {"success": False, "results": []}
     
 
 @app.get("/knowledge/stats")
@@ -598,163 +563,6 @@ async def search_knowledge(query: str, top_k: int = 5):
         raise HTTPException(status_code=400, detail=f"向量搜索失败: {str(e)}")
 
 # 添加文本分块功能
-def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
-    """将文本分割为重叠的块"""
-    if len(text) <= chunk_size:
-        return [text]
-    
-    chunks = []
-    start = 0
-    
-    while start < len(text):
-        end = start + chunk_size
-        
-        # 如果不是最后一块，尝试在句号处分割
-        if end < len(text):
-            # 在句号、问号、感叹号处寻找自然分割点
-            for i in range(end, max(start + chunk_size // 2, start + 1), -1):
-                if text[i-1] in '。！？.!?':
-                    end = i
-                    break
-        
-        chunk = text[start:end].strip()
-        if chunk:
-            chunks.append(chunk)
-        
-        # 设置下一个块的开始位置（有重叠）
-        start = end - overlap
-        if start >= len(text):
-            break
-    
-    return chunks
-
-# 简单的文本提取功能
-def extract_text_from_file(file_content: bytes, filename: str) -> List[str]:
-    """从文件内容中提取文本"""
-    file_extension = Path(filename).suffix.lower()
-    
-    try:
-        if file_extension in ['.txt', '.md']:
-            # 文本文件
-            text = file_content.decode('utf-8')
-            paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
-            return paragraphs if paragraphs else [text]
-        
-        elif file_extension == '.csv':
-            # CSV文件
-            import io
-            import csv
-            text_data = file_content.decode('utf-8')
-            reader = csv.reader(io.StringIO(text_data))
-            rows = []
-            for row in reader:
-                if any(cell.strip() for cell in row):  # 跳过空行
-                    rows.append(' | '.join(row))
-            return rows
-        elif file_extension == '.pdf':
-            # PDF文件
-            try:
-                import io
-                import PyPDF2
-                
-                pdf_file = io.BytesIO(file_content)
-                pdf_reader = PyPDF2.PdfReader(pdf_file)
-                pages_text = []
-                for page_num, page in enumerate(pdf_reader.pages):
-                    try:
-                        page_text = page.extract_text()
-                        if page_text.strip():
-                            # 清理和格式化文本
-                            cleaned_text = page_text.replace('\n', ' ').replace('\r', ' ')
-                            # 移除多余的空格和特殊字符
-                            cleaned_text = ' '.join(cleaned_text.split())
-                            
-                            # 更强的PDF乱码清理：移除常见的PDF提取问题字符
-                            import re
-                            # 移除非打印字符和控制字符，但保留中文字符
-                            cleaned_text = re.sub(r'[^\u4e00-\u9fff\u3400-\u4dbf\w\s\.,;:!?\'"()\-\[\]{}@#$%^&*+=<>/\\|`~·。，、；：！？""''（）【】《》]+', '', cleaned_text)
-                            # 移除过多的空格
-                            cleaned_text = re.sub(r'\s+', ' ', cleaned_text)
-                            # 移除重复的标点符号
-                            cleaned_text = re.sub(r'([.。,，;；:：!！?？])\1+', r'\1', cleaned_text)
-                            
-                            if cleaned_text and len(cleaned_text.strip()) > 20:  # 增加到至少20个有效字符
-                                # 限制每页内容长度，避免过长（增加到2000字符）
-                                if len(cleaned_text) > 2000:
-                                    cleaned_text = cleaned_text[:2000] + "..."
-                                pages_text.append(f"第{page_num+1}页: {cleaned_text}")
-                            else:
-                                # 如果清理后内容太短，可能是表格或图片页，保留原始文本的一部分
-                                raw_text = page_text.strip()
-                                if raw_text and len(raw_text) > 10:
-                                    pages_text.append(f"第{page_num+1}页: [可能包含表格或图片] {raw_text[:100]}...")
-                    except Exception as e:
-                        pages_text.append(f"第{page_num+1}页解析错误: {str(e)}")
-                
-                if not pages_text:
-                    return [f"PDF文件 {filename} 无法提取文本内容，可能是扫描版PDF、加密文件或纯图片文档"]
-                
-                return pages_text
-                
-            except ImportError:
-                return [f"PDF解析需要安装PyPDF2库: pip install PyPDF2"]
-            except Exception as e:
-                return [f"PDF文件解析失败: {str(e)}"]
-        
-        elif file_extension in ['.xlsx', '.xls']:
-            # Excel文件
-            try:
-                import io
-                import pandas as pd
-                
-                df = pd.read_excel(io.BytesIO(file_content))
-                rows = []
-                # 处理表头
-                headers = ' | '.join(str(col) for col in df.columns)
-                rows.append(f"表头: {headers}")
-                
-                # 处理数据行
-                for idx, row in df.iterrows():
-                    row_text = ' | '.join(str(val) for val in row.values if pd.notna(val))
-                    if row_text.strip():
-                        rows.append(f"行{idx+1}: {row_text}")
-                
-                return rows if rows else [f"Excel文件 {filename} 为空"]
-                
-            except Exception as e:
-                return [f"Excel文件解析失败: {str(e)}"]
-        
-        elif file_extension == '.docx':
-            # Word文档
-            try:
-                import io
-                from docx import Document
-                
-                doc = Document(io.BytesIO(file_content))
-                paragraphs = []
-                
-                for para in doc.paragraphs:
-                    text = para.text.strip()
-                    if text:
-                        paragraphs.append(text)
-                
-                return paragraphs if paragraphs else [f"Word文档 {filename} 无文本内容"]
-                
-            except ImportError:
-                return [f"Word文档解析需要安装python-docx库: pip install python-docx"]
-            except Exception as e:
-                return [f"Word文档解析失败: {str(e)}"]
-        
-        else:
-            # 尝试作为文本处理
-            try:
-                text = file_content.decode('utf-8')
-                return [text] if text.strip() else [f"文件 {filename} 内容为空"]
-            except UnicodeDecodeError:
-                return [f"不支持的文件格式: {file_extension}，无法解析为文本"]
-            
-    except Exception as e:
-        return [f"文件处理错误: {str(e)}"]
 
 @app.post("/knowledge/upload")
 async def upload_knowledge_file(
@@ -846,6 +654,7 @@ async def upload_knowledge_file(
         }
         
         uploaded_files.append(file_info)
+        save_data(embedded_documents, uploaded_files)
         
         return {
             "success": True,
@@ -905,6 +714,7 @@ async def delete_knowledge_file(filename: str):
         file_path = UPLOAD_DIR / filename
         if file_path.exists():
             file_path.unlink()
+        save_data(embedded_documents, uploaded_files)
         
         return {
             "success": True,

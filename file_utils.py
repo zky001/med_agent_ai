@@ -43,24 +43,24 @@ def read_file_with_encoding_detection(file_path: Path) -> str:
 
 
 def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
-    """Split text into overlapping chunks."""
+    """Split text into chunks at sentence boundaries with optional overlap."""
     if len(text) <= chunk_size:
-        return [text]
+        return [text.strip()]
+    import re
+    sentences = re.split(r"(?<=[。！？.!?])", text)
     chunks = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        if end < len(text):
-            for i in range(end, max(start + chunk_size // 2, start + 1), -1):
-                if text[i-1] in '。！？.!?':
-                    end = i
-                    break
-        chunk = text[start:end].strip()
-        if chunk:
-            chunks.append(chunk)
-        start = end - overlap
-        if start >= len(text):
-            break
+    current = ""
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        if len(current) + len(sentence) <= chunk_size:
+            current += sentence
+        else:
+            chunks.append(current)
+            current = (current[-overlap:] if overlap > 0 else "") + sentence
+    if current:
+        chunks.append(current)
     return chunks
 
 
