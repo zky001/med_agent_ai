@@ -1725,7 +1725,10 @@ async function generateCurrentSection() {
             chunk.split('\n').forEach(line => {
                 if (line.startsWith('data: ')) {
                     const data = JSON.parse(line.slice(6));
-                    if (data.type === 'system_prompt') {
+                    if (data.error) {
+                        showToast('生成章节失败: ' + data.error, 'error');
+                        throw new Error(data.error);
+                    } else if (data.type === 'system_prompt') {
                         showSystemPrompt(data.content);
                     } else if (data.type === 'section_start') {
                         if (streamingContent) streamingContent.innerHTML += escapeHtml(data.content);
