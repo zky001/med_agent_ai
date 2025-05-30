@@ -32,6 +32,10 @@
 
 启动完成后，在浏览器访问 [http://localhost:3000](http://localhost:3000) 即可使用。
 
+### 新增接口
+
+- `POST /get_section_prompt`：根据已确认的信息和待生成章节，返回默认的系统提示词，可供前端编辑。
+
 ## 运行环境
 
 - Python 3.10 及以上
