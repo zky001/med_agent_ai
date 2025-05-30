@@ -2432,7 +2432,6 @@ window.proceedToOutline = async function() {
         
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        const contentContainer = document.getElementById('live-content-container');
         const promptEl = document.getElementById('outline-prompt');
         const contentEl = document.getElementById('outline-content');
         let accumulated = '';
