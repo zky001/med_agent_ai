@@ -1527,8 +1527,9 @@ function createOutlineItemHTML(section, index) {
                 </div>
             </div>
             <div class="outline-content">
-                <textarea placeholder="章节内容描述..." 
+                <textarea placeholder="章节内容描述..."
                           onchange="updateOutlineSection(${index}, 'content', this.value)">${escapeHtml(section.content || '')}</textarea>
+                ${Array.isArray(section.subsections) ? `<ul class="subsection-list">${section.subsections.map(sub => `<li>${escapeHtml(sub)}</li>`).join('')}</ul>` : ''}
             </div>
         </div>
     `;
@@ -2101,6 +2102,7 @@ function navigatePrevious() {
 function navigateNext() {
     if (currentStepNumber < totalSteps) {
         switchGenerationStep(currentStepNumber + 1);
+        resetLiveContent();
     }
 }
 
@@ -2398,6 +2400,7 @@ window.proceedToOutline = async function() {
         
         // 显示加载状态
         showLoading('正在调用AI模型生成协议大纲...');
+        resetLiveContent();
         
         // 调用真实的后端API生成大纲（流式）
         const response = await fetch(`${API_BASE_URL}/generate_outline_stream`, {
@@ -2422,11 +2425,12 @@ window.proceedToOutline = async function() {
         const decoder = new TextDecoder();
         const contentContainer = document.getElementById('live-content-container');
         if (contentContainer) {
-            contentContainer.innerHTML = '<pre id="outline-prompt"></pre><pre id="outline-content"></pre>';
+            contentContainer.innerHTML = '<pre id="outline-prompt"></pre><pre id="outline-content">推理中...</pre>';
         }
         const promptEl = document.getElementById('outline-prompt');
         const contentEl = document.getElementById('outline-content');
         let accumulated = '';
+        let firstTokenReceived = false;
 
         while (true) {
             const { value, done } = await reader.read();
@@ -2440,7 +2444,15 @@ window.proceedToOutline = async function() {
                     const data = JSON.parse(line.slice(6));
                     if (data.type === 'system_prompt') {
                         if (promptEl) promptEl.textContent = data.content;
+                        if (contentEl && !firstTokenReceived) {
+                            contentEl.textContent = '推理中...';
+                        }
                     } else if (data.type === 'content') {
+                        if (!firstTokenReceived) {
+                            firstTokenReceived = true;
+                            if (contentEl) contentEl.textContent = '';
+                            hideLoading();
+                        }
                         accumulated += data.content;
                         if (contentEl) contentEl.textContent += data.content;
                     } else if (data.type === 'outline') {
@@ -2474,6 +2486,7 @@ window.proceedToOutline = async function() {
         
     } finally {
         showSystemPrompt('');
+        hideLoading();
     }
 };
 
