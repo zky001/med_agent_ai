@@ -18,6 +18,7 @@ import numpy as np
 import chardet
 import logging
 import sys
+from module_templates import MODULE_TEMPLATES
 from datetime import datetime
 
 # 导入真实协议生成器
@@ -2368,8 +2369,12 @@ def get_module_generation_prompt(module_name, confirmed_info, knowledge_context=
     
     prompt = prompts.get(module_name, f"请撰写{module_name}部分的内容。{quality_requirements}")
 
-    # 在提示词末尾附加通用模板，帮助模型参考格式
-    if REFERENCE_TEMPLATE:
+    # 在提示词末尾附加通用模板或模块特定模板
+    module_template = MODULE_TEMPLATES.get(module_name)
+    if module_template:
+        prompt += f"\n\n参考模板：\n{module_template}"
+    elif REFERENCE_TEMPLATE:
+
         prompt += f"\n\n参考模板：\n{REFERENCE_TEMPLATE}"
 
     return prompt
