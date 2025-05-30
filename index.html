@@ -571,8 +571,11 @@
                                         </div>
 
                                         <div class="module-config" id="module-config">
-                                            <h4 id="module-title">章节控制</h4>
+                                            <h4 id="module-title">知识库选择</h4>
                                             <div class="kb-options" id="kb-options"></div>
+                                            <div class="knowledge-controls">
+                                                <button class="btn btn-secondary" onclick="openKnowledgeModal()">从知识库选择/上传附件</button>
+                                            </div>
                                             <textarea id="custom-prompt" rows="4" placeholder="自定义提示词（可选）"></textarea>
                                             <button class="btn btn-primary" id="generate-section-btn" onclick="generateCurrentSection()">生成本章节</button>
                                             <button class="btn btn-success" id="generate-all-btn" onclick="generateAllSections()" style="margin-left:0.5rem;">一键生成</button>
@@ -914,6 +917,26 @@
                     <div class="modal-actions">
                         <button class="btn btn-primary" onclick="savePromptEdit()">保存</button>
                         <button class="btn btn-secondary" onclick="cancelPromptEdit()">取消</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Knowledge Selector Modal -->
+        <div id="knowledge-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2><i class="fas fa-database"></i> 选择知识库或上传附件</h2>
+                    <button class="close-btn" onclick="closeKnowledgeModal()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div id="kb-modal-options" class="kb-options"></div>
+                    <input type="file" id="knowledge-file-input" multiple onchange="handleKnowledgeFile(event)">
+                    <div class="modal-actions">
+                        <button class="btn btn-primary" onclick="saveKnowledgeSelection()">确定</button>
+                        <button class="btn btn-secondary" onclick="closeKnowledgeModal()">取消</button>
                     </div>
                 </div>
             </div>

@@ -1366,7 +1366,8 @@ let smartGenerationState = {
     content: '',
     isGenerating: false,
     currentModuleIndex: 0,
-    sectionPrompts: []
+    sectionPrompts: [],
+    knowledgeFiles: []
 };
 
 // 手动填入默认信息
@@ -1378,6 +1379,7 @@ window.manualInputInfo = function() {
         additional: '请在此补充其他信息'
     };
     smartGenerationState.extractedInfo = defaultInfo;
+    smartGenerationState.confirmedInfo = defaultInfo;
     fillExtractedInfo(defaultInfo);
     switchGenerationStep(2);
     showToast('已填入默认信息，请确认或调整', 'success');
@@ -1395,6 +1397,9 @@ window.skipToDefaultOutline = function() {
         { title: '7. 统计分析', content: '样本量计算、统计分析方法和数据管理' }
     ];
     smartGenerationState.generatedOutline = mockOutline;
+    if (!smartGenerationState.confirmedInfo) {
+        smartGenerationState.confirmedInfo = smartGenerationState.extractedInfo || {};
+    }
     fillOutlineEditor(mockOutline);
     switchGenerationStep(3);
     showToast('已跳过信息确认，使用默认目录', 'info');
@@ -1781,7 +1786,7 @@ function renderModuleControls() {
     }
 
     if (stepHeaderTitle) stepHeaderTitle.textContent = '生成章节: ' + section.title;
-    if (titleEl) titleEl.textContent = '章节控制';
+    if (titleEl) titleEl.textContent = '知识库选择';
     kbOptions.innerHTML = availableKnowledgeTypes.map(t => `<label><input type="checkbox" value="${t}" checked> ${t}</label>`).join('');
     promptEl.value = '';
     promptEl.style.display = 'block';
@@ -2190,7 +2195,7 @@ window.openPromptEditor = async function() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    confirmed_info: smartGenerationState.confirmedInfo,
+                    confirmed_info: smartGenerationState.confirmedInfo || smartGenerationState.extractedInfo || {},
                     section: section,
                     knowledge_types: selectedTypes
                 })
@@ -2257,6 +2262,51 @@ window.handlePromptFile = function(event) {
         }
     };
     reader.readAsText(file);
+};
+
+// 知识库选择相关功能
+window.openKnowledgeModal = function() {
+    const modal = document.getElementById('knowledge-modal');
+    const options = document.getElementById('kb-modal-options');
+    if (modal && options) {
+        options.innerHTML = availableKnowledgeTypes.map(t => {
+            const checked = document.querySelector(`#kb-options input[value="${t}"]`)?.checked ? 'checked' : '';
+            return `<label><input type="checkbox" value="${t}" ${checked}> ${t}</label>`;
+        }).join('');
+        const fileInput = document.getElementById('knowledge-file-input');
+        if (fileInput) fileInput.value = '';
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+        document.body.classList.add('modal-open');
+    }
+};
+
+window.closeKnowledgeModal = function() {
+    const modal = document.getElementById('knowledge-modal');
+    if (modal) {
+        modal.classList.remove('active');
+        modal.style.display = 'none';
+        document.body.classList.remove('modal-open');
+    }
+};
+
+window.saveKnowledgeSelection = function() {
+    const selected = Array.from(document.querySelectorAll('#kb-modal-options input:checked')).map(el => el.value);
+    const kbOptions = document.getElementById('kb-options');
+    if (kbOptions) {
+        kbOptions.innerHTML = availableKnowledgeTypes.map(t => `<label><input type="checkbox" value="${t}" ${selected.includes(t) ? 'checked' : ''}> ${t}</label>`).join('');
+    }
+    const fileInput = document.getElementById('knowledge-file-input');
+    if (fileInput) {
+        smartGenerationState.knowledgeFiles = Array.from(fileInput.files);
+    }
+    closeKnowledgeModal();
+};
+
+window.handleKnowledgeFile = function(event) {
+    const files = event.target.files ? Array.from(event.target.files) : [];
+    smartGenerationState.knowledgeFiles = files;
+    showToast(`已选择 ${files.length} 个附件`, 'info');
 };
 
 // 切换生成步骤
