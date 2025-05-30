@@ -1487,6 +1487,18 @@ function formatFieldName(fieldName) {
     return nameMap[fieldName] || fieldName;
 }
 
+// 将章节内容和子章节合并为可编辑文本
+function formatOutlineContent(section) {
+    const lines = [];
+    if (section.content) {
+        lines.push(section.content);
+    }
+    if (Array.isArray(section.subsections)) {
+        lines.push(...section.subsections);
+    }
+    return lines.join('\n');
+}
+
 // 渲染协议大纲编辑器
 function fillOutlineEditor(outline) {
     const editor = document.getElementById('outline-editor');
@@ -1528,8 +1540,7 @@ function createOutlineItemHTML(section, index) {
             </div>
             <div class="outline-content">
                 <textarea placeholder="章节内容描述..."
-                          onchange="updateOutlineSection(${index}, 'content', this.value)">${escapeHtml(section.content || '')}</textarea>
-                ${Array.isArray(section.subsections) ? `<ul class="subsection-list">${section.subsections.map(sub => `<li>${escapeHtml(sub)}</li>`).join('')}</ul>` : ''}
+                          onchange="updateOutlineSection(${index}, 'content', this.value)">${escapeHtml(formatOutlineContent(section))}</textarea>
             </div>
         </div>
     `;
