@@ -1,31 +1,21 @@
 // 医学AI Agent - 完整JavaScript文件
 
-// 全局变量
-const API_BASE_URL = 'http://localhost:8000';
-let currentConfig = {
-    llm: {
-        type: 'local',
-        url: 'https://v1.voct.top/v1',
-        model: 'gpt-4.1-mini',
-        key: 'EMPTY',
-        temperature: 0.3
-    },
-    embedding: {
-        type: 'local-api',
-        url: 'http://192.168.22.191:8000/v1',
-        key: 'EMPTY',
-        model: 'auto',
-        dimension: 4096
-    }
-};
+import state from './state.js';
+import {
+    showToast,
+    showLoading,
+    hideLoading,
+    showSystemPrompt,
+    showThinkingIndicator,
+    hideThinkingIndicator
+} from './ui.js';
+import {
+    updateBackendConfiguration,
+    testLLMConnection,
+    testEmbeddingModel
+} from './api.js';
 
-let charts = {};
-let currentFiles = [];
-let generationInProgress = false;
-let modalListenersInitialized = false;
-let chatHistory = [];
-let availableKnowledgeTypes = [];
-let editingPromptIndex = null;
+const API_BASE_URL = state.API_BASE_URL;
 
 // HTML转义函数
 function escapeHtml(text) {
@@ -90,7 +80,7 @@ function initializeInterface() {
     if (tempSlider && tempValue) {
         tempSlider.addEventListener('input', function() {
             tempValue.textContent = this.value;
-            currentConfig.llm.temperature = parseFloat(this.value);
+            state.currentConfig.llm.temperature = parseFloat(this.value);
         });
     }
 
@@ -420,7 +410,7 @@ function updateStatusIndicator(elementId, isOnline, label) {
 function loadConfiguration() {
     const savedConfig = localStorage.getItem('medicalAiConfig');
     if (savedConfig) {
-        currentConfig = JSON.parse(savedConfig);
+        state.currentConfig = JSON.parse(savedConfig);
         applyConfigurationToUI();
     }
 }
@@ -433,12 +423,12 @@ function applyConfigurationToUI() {
     const llmTemp = document.getElementById('llm-temp');
     const tempValue = document.getElementById('temp-value');
     
-    if (llmType) llmType.value = currentConfig.llm.type;
-    if (llmUrl) llmUrl.value = currentConfig.llm.url;
-    if (llmModel) llmModel.value = currentConfig.llm.model;
-    if (llmKey) llmKey.value = currentConfig.llm.key;
-    if (llmTemp) llmTemp.value = currentConfig.llm.temperature;
-    if (tempValue) tempValue.textContent = currentConfig.llm.temperature;
+    if (llmType) llmType.value = state.currentConfig.llm.type;
+    if (llmUrl) llmUrl.value = state.currentConfig.llm.url;
+    if (llmModel) llmModel.value = state.currentConfig.llm.model;
+    if (llmKey) llmKey.value = state.currentConfig.llm.key;
+    if (llmTemp) llmTemp.value = state.currentConfig.llm.temperature;
+    if (tempValue) tempValue.textContent = state.currentConfig.llm.temperature;
     
     const embedType = document.getElementById('embed-type');
     const embedUrl = document.getElementById('embed-url');
@@ -446,11 +436,11 @@ function applyConfigurationToUI() {
     const embedModel = document.getElementById('embed-model');
     const embedDim = document.getElementById('embed-dim');
     
-    if (embedType) embedType.value = currentConfig.embedding.type;
-    if (embedUrl) embedUrl.value = currentConfig.embedding.url;
-    if (embedKey) embedKey.value = currentConfig.embedding.key;
-    if (embedModel) embedModel.value = currentConfig.embedding.model;
-    if (embedDim) embedDim.value = currentConfig.embedding.dimension;
+    if (embedType) embedType.value = state.currentConfig.embedding.type;
+    if (embedUrl) embedUrl.value = state.currentConfig.embedding.url;
+    if (embedKey) embedKey.value = state.currentConfig.embedding.key;
+    if (embedModel) embedModel.value = state.currentConfig.embedding.model;
+    if (embedDim) embedDim.value = state.currentConfig.embedding.dimension;
     
     toggleEmbeddingConfigDisplay();
 }
@@ -463,7 +453,7 @@ function updateLLMConfig() {
     const llmTemp = document.getElementById('llm-temp');
     
     if (llmType && llmUrl && llmModel && llmKey && llmTemp) {
-        currentConfig.llm = {
+        state.currentConfig.llm = {
             type: llmType.value,
             url: llmUrl.value,
             model: llmModel.value,
@@ -482,7 +472,7 @@ function updateEmbeddingConfig() {
     const embedDim = document.getElementById('embed-dim');
     
     if (embedType && embedUrl && embedKey && embedModel && embedDim) {
-        currentConfig.embedding = {
+        state.currentConfig.embedding = {
             type: embedType.value,
             url: embedUrl.value,
             key: embedKey.value,
@@ -494,50 +484,23 @@ function updateEmbeddingConfig() {
 }
 
 function saveConfiguration() {
-    localStorage.setItem('medicalAiConfig', JSON.stringify(currentConfig));
+    localStorage.setItem('medicalAiConfig', JSON.stringify(state.currentConfig));
     updateBackendConfiguration();
     showToast('配置已保存并生效', 'success');
 }
 
-async function updateBackendConfiguration() {
-    try {
-        const formData = new FormData();
-        formData.append('llm_type', currentConfig.llm.type);
-        formData.append('llm_url', currentConfig.llm.url);
-        formData.append('llm_model', currentConfig.llm.model);
-        formData.append('llm_key', currentConfig.llm.key);
-        formData.append('llm_temperature', currentConfig.llm.temperature);
-        formData.append('embed_type', currentConfig.embedding.type);
-        formData.append('embed_url', currentConfig.embedding.url);
-        formData.append('embed_key', currentConfig.embedding.key);
-        formData.append('embed_model', currentConfig.embedding.model);
-        formData.append('embed_dimension', currentConfig.embedding.dimension);
-
-        const response = await fetch(`${API_BASE_URL}/config/update`, {
-            method: 'POST',
-            body: formData
-        });
-
-        if (response.ok) {
-            const result = await response.json();
-            console.log('后端配置更新成功:', result);
-        }
-    } catch (error) {
-        console.error('后端配置更新错误:', error);
-    }
-}
 
 // 文件处理
 function handleFileSelect(files) {
     console.log('handleFileSelect被调用，文件数量:', files.length);
     
     if (!files || files.length === 0) {
-        currentFiles = [];
+        state.currentFiles = [];
         updateFilePreview();
         return;
     }
     
-    currentFiles = Array.from(files);
+    state.currentFiles = Array.from(files);
     updateFilePreview();
 }
 
@@ -548,9 +511,9 @@ function updateFilePreview() {
     const preview = dragDropArea.querySelector('p');
     if (!preview) return;
     
-    if (currentFiles.length > 0) {        
-        const fileNames = currentFiles.map(f => escapeHtml(f.name)).join(', ');
-        preview.innerHTML = `已选择 ${currentFiles.length} 个文件:<br><small style="color: #666;">${fileNames}</small>`;
+    if (state.currentFiles.length > 0) {        
+        const fileNames = state.currentFiles.map(f => escapeHtml(f.name)).join(', ');
+        preview.innerHTML = `已选择 ${state.currentFiles.length} 个文件:<br><small style="color: #666;">${fileNames}</small>`;
         
         dragDropArea.style.borderColor = '#10b981';
         dragDropArea.style.backgroundColor = 'rgba(16, 185, 129, 0.05)';
@@ -569,98 +532,11 @@ function initializeChat() {
 function updateCurrentModelDisplay() {
     const modelDisplay = document.getElementById('current-model-display');
     if (modelDisplay) {
-        modelDisplay.textContent = currentConfig.llm.model || '未配置';
+        modelDisplay.textContent = state.currentConfig.llm.model || '未配置';
     }
 }
 
 // Toast消息
-function showToast(message, type = 'info') {
-    const toastContainer = document.getElementById('toast-container');
-    if (!toastContainer) return;
-
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    
-    // 创建图标映射
-    const icons = {
-        success: 'fas fa-check-circle',
-        error: 'fas fa-exclamation-circle',
-        warning: 'fas fa-exclamation-triangle',
-        info: 'fas fa-info-circle'
-    };
-    
-    toast.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-            <i class="${icons[type] || icons.info}"></i>
-            <span>${message}</span>
-        </div>
-    `;
-
-    toastContainer.appendChild(toast);
-
-    // 自动移除
-    setTimeout(() => {
-        if (toast.parentNode) {
-            toast.parentNode.removeChild(toast);
-        }
-    }, 5000);
-}
-
-// 加载动画
-function showLoading(text = '处理中...') {
-    const loadingOverlay = document.getElementById('loading-overlay');
-    const loadingText = document.getElementById('loading-text');
-    
-    if (loadingText) loadingText.textContent = text;
-    if (loadingOverlay) {
-        loadingOverlay.style.display = 'flex';
-        loadingOverlay.classList.add('active');
-    }
-}
-
-function hideLoading() {
-    const loadingOverlay = document.getElementById('loading-overlay');
-    if (loadingOverlay) {
-        loadingOverlay.style.display = 'none';
-        loadingOverlay.classList.remove('active');
-    }
-}
-
-// 在右侧显示系统提示词
-function showSystemPrompt(text) {
-    const promptEl = document.getElementById('prompt-viewer');
-    if (promptEl) {
-        if (text) {
-            promptEl.style.display = 'block';
-            promptEl.textContent = text;
-            showThinkingIndicator();
-        } else {
-            promptEl.style.display = 'none';
-            promptEl.textContent = '';
-            hideThinkingIndicator();
-        }
-    }
-}
-
-function showThinkingIndicator() {
-    let indicator = document.getElementById('thinking-indicator');
-    const container = document.getElementById('streaming-content');
-    if (!container) return;
-    if (!indicator) {
-        indicator = document.createElement('div');
-        indicator.id = 'thinking-indicator';
-        indicator.innerHTML = '思考中 <span class="spinner"></span>';
-        container.parentNode.insertBefore(indicator, container.nextSibling);
-    }
-    indicator.style.display = 'flex';
-}
-
-function hideThinkingIndicator() {
-    const indicator = document.getElementById('thinking-indicator');
-    if (indicator) {
-        indicator.style.display = 'none';
-    }
-}
 
 // 格式化函数
 function formatFileSize(bytes) {
@@ -676,51 +552,13 @@ function formatDate(timestamp) {
 }
 
 // 全局函数绑定 - 配置相关
-window.testLLMConnection = async function() {
-    showLoading('测试LLM连接中...');
-    try {
-        const response = await fetch(`${API_BASE_URL}/test/llm`, {
-            method: 'POST'
-        });
-        const result = await response.json();
-        
-        if (result.success) {
-            showToast('LLM连接测试成功: ' + result.response, 'success');
-        } else {
-            showToast('LLM连接测试失败: ' + result.message, 'error');
-        }
-    } catch (error) {
-        showToast('LLM连接测试失败: ' + error.message, 'error');
-    } finally {
-        showSystemPrompt('');
-        hideLoading();
-    }
-};
-
-window.testEmbeddingModel = async function() {
-    showLoading('测试嵌入模型中...');
-    try {
-        const response = await fetch(`${API_BASE_URL}/test/embedding`, {
-            method: 'POST'
-        });
-        const result = await response.json();
-        
-        if (result.success) {
-            showToast(`嵌入模型测试成功，维度: ${result.dimension}`, 'success');
-        } else {
-            showToast('嵌入模型测试失败: ' + result.message, 'error');
-        }
-    } catch (error) {
-        showToast('嵌入模型测试失败: ' + error.message, 'error');
-    } finally {
-        hideLoading();
-    }
-};
+window.testLLMConnection = testLLMConnection;
+window.testEmbeddingModel = testEmbeddingModel;
 
 window.saveConfiguration = saveConfiguration;
 
 window.resetConfiguration = function() {
-    currentConfig = {
+    state.currentConfig = {
         llm: {
             type: 'local',
             url: 'https://v1.voct.top/v1',
@@ -742,7 +580,7 @@ window.resetConfiguration = function() {
 };
 
 window.exportConfiguration = function() {
-    const configBlob = new Blob([JSON.stringify(currentConfig, null, 2)], {
+    const configBlob = new Blob([JSON.stringify(state.currentConfig, null, 2)], {
         type: 'application/json'
     });
     const url = URL.createObjectURL(configBlob);
@@ -756,9 +594,9 @@ window.exportConfiguration = function() {
 
 // 全局函数绑定 - 文件上传相关
 window.uploadFiles = async function() {
-    console.log('uploadFiles被调用，当前文件数量:', currentFiles.length);
+    console.log('uploadFiles被调用，当前文件数量:', state.currentFiles.length);
     
-    if (currentFiles.length === 0) {
+    if (state.currentFiles.length === 0) {
         showToast('请先选择文件', 'warning');
         return;
     }
@@ -771,14 +609,14 @@ window.uploadFiles = async function() {
         uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 正在上传...';
     }
     
-    showLoading(`正在上传 ${currentFiles.length} 个文件...`);
+    showLoading(`正在上传 ${state.currentFiles.length} 个文件...`);
 
     try {
         let successCount = 0;
         let errorCount = 0;
         
-        for (let i = 0; i < currentFiles.length; i++) {
-            const file = currentFiles[i];
+        for (let i = 0; i < state.currentFiles.length; i++) {
+            const file = state.currentFiles[i];
             const formData = new FormData();
             formData.append('file', file);
             formData.append('knowledge_type', knowledgeType);
@@ -807,7 +645,7 @@ window.uploadFiles = async function() {
 
         if (successCount > 0) {
             showToast(`成功上传 ${successCount} 个文件`, 'success');
-            currentFiles = [];
+            state.currentFiles = [];
             const fileInput = document.getElementById('file-input');
             if (fileInput) fileInput.value = '';
             updateFilePreview();
@@ -1030,12 +868,12 @@ window.clearChat = function() {
                 </div>
                 <h3>欢迎使用医学AI助手</h3>
                 <p>您可以在这里直接与配置的LLM模型对话</p>
-                <p class="model-info">当前模型：<span id="current-model-display">${currentConfig.llm.model || '未配置'}</span></p>
+                <p class="model-info">当前模型：<span id="current-model-display">${state.currentConfig.llm.model || '未配置'}</span></p>
             </div>
         `;
     }
     
-    chatHistory = [];
+    state.chatHistory = [];
     updateChatStats();
     showToast('聊天记录已清空', 'success');
 };
@@ -1220,7 +1058,7 @@ async function loadKnowledgeStats() {
             const data = await response.json();
             updateKnowledgeStatsChart(data.stats);
             updateStatsDetails(data.stats);
-            availableKnowledgeTypes = Object.keys(data.stats || {});
+            state.availableKnowledgeTypes = Object.keys(data.stats || {});
         }
     } catch (error) {
         console.error('加载知识库统计失败:', error);
@@ -1234,12 +1072,12 @@ function updateKnowledgeStatsChart(stats) {
     const labels = Object.keys(stats);
     const data = Object.values(stats).map(stat => stat.document_count || 0);
 
-    if (charts.kbStats) {
-        charts.kbStats.destroy();
+    if (state.charts.kbStats) {
+        state.charts.kbStats.destroy();
     }
 
     if (typeof Chart !== 'undefined') {
-        charts.kbStats = new Chart(ctx, {
+        state.charts.kbStats = new Chart(ctx, {
             type: 'doughnut',
             data: {
                 labels: labels,
@@ -1377,7 +1215,7 @@ function displayFileDetails(data) {
 }
 
 console.log('=== 医学AI Agent 系统初始化完成 ===');
-console.log('当前配置:', currentConfig);
+console.log('当前配置:', state.currentConfig);
 console.log('=== 系统准备就绪 ===');
 
 // ===== 智能生成相关函数补充 =====
@@ -1810,7 +1648,7 @@ function renderModuleControls() {
     }
 
     if (titleEl) titleEl.textContent = '知识库选择';
-    kbOptions.innerHTML = availableKnowledgeTypes.map(t => `<label><input type="checkbox" value="${t}" checked> ${t}</label>`).join('');
+    kbOptions.innerHTML = state.availableKnowledgeTypes.map(t => `<label><input type="checkbox" value="${t}" checked> ${t}</label>`).join('');
     promptEl.value = '';
     promptEl.style.display = 'block';
     btn.style.display = 'inline-block';
@@ -2208,7 +2046,7 @@ window.closeContentEditor = function() {
 // 提示词编辑相关功能
 window.openPromptEditor = async function() {
     const index = smartGenerationState.currentModuleIndex;
-    editingPromptIndex = index;
+    state.editingPromptIndex = index;
     let prompt = smartGenerationState.sectionPrompts[index];
 
     if (!prompt) {
@@ -2252,14 +2090,14 @@ window.cancelPromptEdit = function() {
         modal.style.display = 'none';
         document.body.classList.remove('modal-open');
     }
-    editingPromptIndex = null;
+    state.editingPromptIndex = null;
 };
 
 window.savePromptEdit = function() {
-    if (editingPromptIndex === null) return;
+    if (state.editingPromptIndex === null) return;
     const textarea = document.getElementById('prompt-modal-text');
     if (textarea) {
-        smartGenerationState.sectionPrompts[editingPromptIndex] = textarea.value;
+        smartGenerationState.sectionPrompts[state.editingPromptIndex] = textarea.value;
         showSystemPrompt(textarea.value);
     }
     window.cancelPromptEdit();
@@ -2293,7 +2131,7 @@ window.openKnowledgeModal = function() {
     const modal = document.getElementById('knowledge-modal');
     const options = document.getElementById('kb-modal-options');
     if (modal && options) {
-        options.innerHTML = availableKnowledgeTypes.map(t => {
+        options.innerHTML = state.availableKnowledgeTypes.map(t => {
             const checked = document.querySelector(`#kb-options input[value="${t}"]`)?.checked ? 'checked' : '';
             return `<label><input type="checkbox" value="${t}" ${checked}> ${t}</label>`;
         }).join('');
@@ -2318,7 +2156,7 @@ window.saveKnowledgeSelection = function() {
     const selected = Array.from(document.querySelectorAll('#kb-modal-options input:checked')).map(el => el.value);
     const kbOptions = document.getElementById('kb-options');
     if (kbOptions) {
-        kbOptions.innerHTML = availableKnowledgeTypes.map(t => `<label><input type="checkbox" value="${t}" ${selected.includes(t) ? 'checked' : ''}> ${t}</label>`).join('');
+        kbOptions.innerHTML = state.availableKnowledgeTypes.map(t => `<label><input type="checkbox" value="${t}" ${selected.includes(t) ? 'checked' : ''}> ${t}</label>`).join('');
     }
     const fileInput = document.getElementById('knowledge-file-input');
     if (fileInput) {
@@ -3014,7 +2852,7 @@ async function startRealStreamGeneration() {
 function debugAPIConnection() {
     console.log('🔍 API连接调试信息:');
     console.log('- API_BASE_URL:', API_BASE_URL);
-    console.log('- 当前配置:', currentConfig);
+    console.log('- 当前配置:', state.currentConfig);
     console.log('- 浏览器网络状态:', navigator.onLine);
     
     // 测试基本连接
