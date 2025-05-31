@@ -386,6 +386,10 @@ body {
     transform: translateY(-1px);
 }
 
+#generate-all-btn {
+    justify-content: center;
+}
+
 .btn-outline {
     background: transparent;
     color: var(--primary-color);
@@ -1955,6 +1959,30 @@ body {
 
 .content-viewer li {
     margin-bottom: var(--spacing-xs);
+}
+
+/* 思考中指示器 */
+#thinking-indicator {
+    margin-top: var(--spacing-sm);
+    color: var(--secondary-color);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-style: italic;
+}
+
+#thinking-indicator .spinner {
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
 /* 响应式改进 */
