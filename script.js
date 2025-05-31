@@ -633,10 +633,32 @@ function showSystemPrompt(text) {
         if (text) {
             promptEl.style.display = 'block';
             promptEl.textContent = text;
+            showThinkingIndicator();
         } else {
             promptEl.style.display = 'none';
             promptEl.textContent = '';
+            hideThinkingIndicator();
         }
+    }
+}
+
+function showThinkingIndicator() {
+    let indicator = document.getElementById('thinking-indicator');
+    const container = document.getElementById('streaming-content');
+    if (!container) return;
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'thinking-indicator';
+        indicator.innerHTML = '思考中 <span class="spinner"></span>';
+        container.parentNode.insertBefore(indicator, container.nextSibling);
+    }
+    indicator.style.display = 'flex';
+}
+
+function hideThinkingIndicator() {
+    const indicator = document.getElementById('thinking-indicator');
+    if (indicator) {
+        indicator.style.display = 'none';
     }
 }
 
@@ -1776,8 +1798,6 @@ function renderModuleControls() {
     const kbOptions = document.getElementById('kb-options');
     const promptEl = document.getElementById('custom-prompt');
     const btn = document.getElementById('generate-section-btn');
-    const stepHeaderTitle = document.querySelector('#step-4 .step-header-content h3');
-
 
     if (!section) {
         titleEl.textContent = '全部章节生成完成';
@@ -1789,7 +1809,6 @@ function renderModuleControls() {
         return;
     }
 
-    if (stepHeaderTitle) stepHeaderTitle.textContent = '生成章节: ' + section.title;
     if (titleEl) titleEl.textContent = '知识库选择';
     kbOptions.innerHTML = availableKnowledgeTypes.map(t => `<label><input type="checkbox" value="${t}" checked> ${t}</label>`).join('');
     promptEl.value = '';
@@ -1885,6 +1904,7 @@ async function generateCurrentSection() {
                 }
 
                 if (data.content || data.section_start) {
+                    hideThinkingIndicator();
                     if (typeof marked !== 'undefined') {
                         streamingContent.innerHTML = marked.parse(accumulated);
                     } else if (streamingContent) {
@@ -2523,34 +2543,8 @@ function initializeStepNavigation() {
         </div>
     `;
     
-    // 为每个步骤添加头部
-    document.querySelectorAll('.generation-step').forEach((step, index) => {
-        const stepNumber = index + 1;
-        const stepTitles = [
-            '需求输入',
-            '信息确认',
-            '目录调整',
-            '生成章节'
-        ];
-        const stepDescriptions = [
-            '请详细描述您的临床试验研究需求',
-            'AI已自动提取关键信息，请确认或调整',
-            '根据您的需求，AI生成了以下方案目录结构，您可以调整',
-            '正在智能生成完整的临床试验方案'
-        ];
-        
-        const headerHTML = `
-            <div class="step-header-content">
-                <div class="step-number-badge">${stepNumber}</div>
-                <div class="step-title">
-                    <h3>${stepTitles[index]}</h3>
-                    <p>${stepDescriptions[index]}</p>
-                </div>
-            </div>
-        `;
-        
-        step.insertAdjacentHTML('afterbegin', headerHTML);
-    });
+    // 移除自动生成的步骤标题
+    document.querySelectorAll('.step-header-content').forEach(el => el.remove());
     
     // 添加导航到步骤容器
     const stepsContainerElement = document.querySelector('.generation-steps-container') || 
